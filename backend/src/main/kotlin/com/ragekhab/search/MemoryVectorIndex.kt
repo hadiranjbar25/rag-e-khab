@@ -1,0 +1,40 @@
+package com.ragekhab.search
+
+import com.ragekhab.document.DocumentChunk
+import org.springframework.stereotype.Component
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+
+@Component
+class MemoryVectorIndex(private val embedder: TextEmbedder) : VectorIndex {
+    private val indexed = ConcurrentHashMap<String, IndexedChunk>()
+
+    override fun upsert(chunks: List<DocumentChunk>) {
+        chunks.forEach { chunk -> indexed[chunk.id] = IndexedChunk(chunk, embedder.embed(chunk.text)) }
+    }
+
+    override fun search(query: String, limit: Int, projectId: UUID?): List<SearchResult> {
+        val vector = embedder.embed(query)
+        return indexed.values
+            .asSequence()
+            .filter { projectId == null || it.chunk.projectId == projectId }
+            .map { it.chunk.toResult(embedder.cosine(vector, it.vector)) }
+            .filter { it.score > 0.0 }
+            .sortedByDescending { it.score }
+            .take(limit.coerceIn(1, 30))
+            .toList()
+    }
+
+    override fun deleteDocument(documentId: UUID) {
+        indexed.entries.removeIf { it.value.chunk.documentId == documentId }
+    }
+
+    override fun reindex(chunks: List<DocumentChunk>) {
+        indexed.clear()
+        upsert(chunks)
+    }
+
+    override fun status(): String = "memory"
+
+    private data class IndexedChunk(val chunk: DocumentChunk, val vector: List<Float>)
+}

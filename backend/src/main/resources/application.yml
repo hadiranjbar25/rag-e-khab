@@ -1,0 +1,27 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: rag-e-khab
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+ragekhab:
+  storage-dir: ${RAGEKHAB_STORAGE_DIR:./data/documents}
+  llm:
+    provider: ${RAGEKHAB_LLM_PROVIDER:ollama}
+    model: ${RAGEKHAB_LLM_MODEL:llama3.1}
+    api-key: ${RAGEKHAB_LLM_API_KEY:}
+    base-url: ${RAGEKHAB_LLM_BASE_URL:http://localhost:11434}
+  qdrant:
+    url: ${QDRANT_URL:http://localhost:6333}
+    collection: ${QDRANT_COLLECTION:ragekhab_documents}

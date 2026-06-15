@@ -1,0 +1,8 @@
+.gradle/
+backend/build/
+frontend/dist/
+frontend/node_modules/
+data/
+.git/
+.DS_Store
+*.log
