@@ -1,0 +1,11 @@
+FROM gradle:9.2.1-jdk25 AS build
+WORKDIR /workspace
+COPY . .
+ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Dkotlin.compiler.execution.strategy=in-process"
+RUN gradle :backend:bootJar --no-daemon --stacktrace
+
+FROM eclipse-temurin:25-jre
+WORKDIR /app
+COPY --from=build /workspace/backend/build/libs/*.jar /app/rag-e-khab.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/rag-e-khab.jar"]
