@@ -22,6 +22,18 @@ ragekhab:
     model: ${RAGEKHAB_LLM_MODEL:llama3.1}
     api-key: ${RAGEKHAB_LLM_API_KEY:}
     base-url: ${RAGEKHAB_LLM_BASE_URL:http://localhost:11434}
+  optimizer:
+    mode: ${RAGEKHAB_OPTIMIZER_MODE:retrieval}
+    max-tokens: ${RAGEKHAB_OPTIMIZER_MAX_TOKENS:3000}
+  local-llm:
+    enabled: ${RAGEKHAB_LOCAL_LLM_ENABLED:false}
+    provider: ${RAGEKHAB_LOCAL_LLM_PROVIDER:ollama}
+    base-url: ${RAGEKHAB_LOCAL_LLM_BASE_URL:http://localhost:11434}
+    model: ${RAGEKHAB_LOCAL_LLM_MODEL:qwen2.5:7b}
   qdrant:
     url: ${QDRANT_URL:http://localhost:6333}
     collection: ${QDRANT_COLLECTION:ragekhab_documents}
+  repository-agent:
+    path: ${RAGEKHAB_REPOSITORY_PATH:}
+    scheduled: ${RAGEKHAB_REPOSITORY_SCHEDULED:false}
+    interval-ms: ${RAGEKHAB_REPOSITORY_SCAN_INTERVAL_MS:300000}
