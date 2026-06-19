@@ -1,6 +1,7 @@
 package com.ragekhab.llm
 
 import com.ragekhab.config.RagEKhabProperties
+import com.ragekhab.config.RuntimeSettingsService
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 
@@ -31,14 +32,18 @@ abstract class ConfiguredHttpProvider(
 }
 
 @Component
-class OllamaProvider(properties: RagEKhabProperties) : ConfiguredHttpProvider(properties) {
+class OllamaProvider(
+    properties: RagEKhabProperties,
+    private val settingsService: RuntimeSettingsService,
+) : ConfiguredHttpProvider(properties) {
     override val name = "ollama"
 
     override fun answer(request: LLMRequest): String =
         runCatching {
+            val settings = settingsService.current().llm
             val response = client.post()
-                .uri("${properties.llm.baseUrl}/api/generate")
-                .body(mapOf("model" to properties.llm.model, "prompt" to prompt(request), "stream" to false))
+                .uri("${settings.baseUrl}/api/generate")
+                .body(mapOf("model" to settings.model, "prompt" to prompt(request), "stream" to false))
                 .retrieve()
                 .body(Map::class.java)
             response?.get("response")?.toString()?.takeIf { it.isNotBlank() } ?: fallback(request)

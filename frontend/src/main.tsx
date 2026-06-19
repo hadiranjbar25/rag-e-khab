@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Send,
   Settings,
+  Sparkles,
   Trash2,
   Upload
 } from 'lucide-react';
@@ -54,6 +55,14 @@ type ChatResponse = {
   createdAt: string;
 };
 
+type OptimizedContext = {
+  summary: string;
+  criticalContext: string[];
+  importantContext: string[];
+  sources: string[];
+  estimatedTokens: number;
+};
+
 type ConversationTurn = {
   id: string;
   question: string;
@@ -71,19 +80,65 @@ type AdminStatus = {
     vectorStore: string;
     collection: string;
   };
+  settings: RuntimeSettings;
 };
 
-type View = 'home' | 'projects' | 'knowledge' | 'chat' | 'admin';
+type RuntimeSettings = {
+  llm: {
+    provider: string;
+    model: string;
+    apiKey: string;
+    baseUrl: string;
+  };
+  optimizer: {
+    mode: string;
+    maxTokens: number;
+  };
+  localLlm: {
+    enabled: boolean;
+    provider: string;
+    baseUrl: string;
+    model: string;
+  };
+  repositoryAgent: {
+    path: string;
+    scheduled: boolean;
+    intervalMs: number;
+  };
+};
+
+type View = 'home' | 'projects' | 'knowledge' | 'optimizer' | 'chat' | 'admin';
 type IngestMode = 'upload' | 'text';
+
+const viewRoutes: Record<View, string> = {
+  home: '/',
+  projects: '/projects',
+  knowledge: '/knowledge',
+  optimizer: '/optimize',
+  chat: '/chat',
+  admin: '/admin'
+};
+
+function viewFromPath(pathname: string): View {
+  const normalized = pathname.replace(/\/+$/, '') || '/';
+  const match = Object.entries(viewRoutes).find(([, path]) => path === normalized);
+  return (match?.[0] as View | undefined) ?? 'home';
+}
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
-  if (!response.ok) throw new Error(await response.text());
+  if (!response.ok) {
+    const body = await response.text();
+    if (response.status === 502 || body.includes('Bad Gateway')) {
+      throw new Error('Backend is unavailable. Start or restart the backend service, then retry.');
+    }
+    throw new Error(body);
+  }
   return response.json() as Promise<T>;
 }
 
 function App() {
-  const [view, setView] = useState<View>('home');
+  const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname));
   const [ingestMode, setIngestMode] = useState<IngestMode>('text');
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -92,13 +147,24 @@ function App() {
   const [textBody, setTextBody] = useState('');
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [status, setStatus] = useState<AdminStatus | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<RuntimeSettings | null>(null);
   const [question, setQuestion] = useState('');
+  const [task, setTask] = useState('');
+  const [optimizedContext, setOptimizedContext] = useState<OptimizedContext | null>(null);
   const [history, setHistory] = useState<ConversationTurn[]>([]);
   const [activeSource, setActiveSource] = useState<SearchResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
+
+  const navigate = (nextView: View) => {
+    const path = viewRoutes[nextView];
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    setView(nextView);
+  };
 
   const refresh = async () => {
     const [projectList, docs, admin] = await Promise.all([
@@ -110,11 +176,18 @@ function App() {
     if (!selectedProjectId && projectList.length > 0) setSelectedProjectId(projectList[0].id);
     setDocuments(docs);
     setStatus(admin);
+    setSettingsDraft(admin.settings);
   };
 
   useEffect(() => {
     refresh().catch((err) => setError(err.message));
   }, [selectedProjectId]);
+
+  useEffect(() => {
+    const onPopState = () => setView(viewFromPath(window.location.pathname));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const stats = useMemo(() => [
     ['Projects', projects.length],
@@ -127,6 +200,7 @@ function App() {
     { id: 'home' as const, label: 'Home', icon: Home },
     { id: 'projects' as const, label: 'Projects', icon: FolderPlus },
     { id: 'knowledge' as const, label: 'Knowledge', icon: BookOpen },
+    { id: 'optimizer' as const, label: 'Optimize', icon: Sparkles },
     { id: 'chat' as const, label: 'Chat', icon: MessageSquare },
     { id: 'admin' as const, label: 'Admin', icon: Settings }
   ];
@@ -201,6 +275,25 @@ function App() {
     }
   };
 
+  const optimizeContext = async () => {
+    const prompt = task.trim();
+    if (!prompt) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await request<OptimizedContext>('/api/context/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task: prompt, projectId: selectedProjectId || undefined, targetTokens: 2000 })
+      });
+      setOptimizedContext(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Context optimization failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const deleteDocument = async (id: string) => {
     setBusy(true);
     setError(null);
@@ -246,6 +339,25 @@ function App() {
     }
   };
 
+  const saveSettings = async () => {
+    if (!settingsDraft) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const settings = await request<RuntimeSettings>('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsDraft)
+      });
+      setSettingsDraft(settings);
+      setStatus((current) => current ? { ...current, settings } : current);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Settings update failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <main className="shell">
       <aside className="sidebar">
@@ -260,7 +372,7 @@ function App() {
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button className={view === item.id ? 'navItem active' : 'navItem'} onClick={() => setView(item.id)} key={item.id}>
+              <button className={view === item.id ? 'navItem active' : 'navItem'} onClick={() => navigate(item.id)} key={item.id}>
                 <Icon size={18} />
                 <span>{item.label}</span>
               </button>
@@ -281,7 +393,7 @@ function App() {
                 <option value={project.id} key={project.id}>{project.name}</option>
               ))}
             </select>
-            <button onClick={() => setView('knowledge')}><FilePlus2 size={18} /><span>Add</span></button>
+            <button onClick={() => navigate('knowledge')}><FilePlus2 size={18} /><span>Add</span></button>
           </div>
         </header>
 
@@ -314,7 +426,7 @@ function App() {
               <section className="surface">
                 <div className="surfaceHeader">
                   <h2>Recent knowledge</h2>
-                  <button className="ghostButton" onClick={() => setView('knowledge')}>View all</button>
+                  <button className="ghostButton" onClick={() => navigate('knowledge')}>View all</button>
                 </div>
                 <div className="documentList compact">
                   {documents.slice(0, 5).map((doc) => (
@@ -411,6 +523,46 @@ function App() {
           </section>
         )}
 
+        {view === 'optimizer' && (
+          <section className="optimizerLayout">
+            <section className="surface optimizerComposer">
+              <div className="surfaceHeader">
+                <h2>Context optimizer</h2>
+                <Sparkles size={18} />
+              </div>
+              <textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Add pagination to Orders API" />
+              <button onClick={optimizeContext} disabled={busy || !task.trim()}><Sparkles size={18} /><span>Optimize context</span></button>
+            </section>
+
+            <section className="surface optimizedResult">
+              {optimizedContext ? (
+                <>
+                  <div className="optimizedSummary">
+                    <span>Estimated tokens</span>
+                    <strong>{optimizedContext.estimatedTokens}</strong>
+                    <p>{optimizedContext.summary}</p>
+                  </div>
+                  <div className="contextColumns">
+                    <div>
+                      <h2>Critical</h2>
+                      {optimizedContext.criticalContext.map((item) => <p className="contextLine" key={item}>{item}</p>)}
+                    </div>
+                    <div>
+                      <h2>Important</h2>
+                      {optimizedContext.importantContext.map((item) => <p className="contextLine" key={item}>{item}</p>)}
+                    </div>
+                  </div>
+                  <div className="sourceChips">
+                    {optimizedContext.sources.map((source) => <span key={source}>{source}</span>)}
+                  </div>
+                </>
+              ) : (
+                <div className="empty">Enter a coding task to produce the smallest useful context for Claude Code.</div>
+              )}
+            </section>
+          </section>
+        )}
+
         {view === 'chat' && (
           <section className="chatLayout">
             <section className="surface chatSurface">
@@ -477,6 +629,163 @@ function App() {
               <div><span>Vector store</span><strong>{status?.index.vectorStore ?? 'unknown'}</strong></div>
               <div><span>Collection</span><strong>{status?.index.collection ?? 'unknown'}</strong></div>
             </div>
+            {settingsDraft && (
+              <section className="surface settingsPanel">
+                <div className="surfaceHeader">
+                  <h2>Settings</h2>
+                  <button onClick={saveSettings} disabled={busy}>Save</button>
+                </div>
+                <div className="settingsGrid">
+                  <label>
+                    <span>Chat provider</span>
+                    <select
+                      value={settingsDraft.llm.provider}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        llm: { ...settingsDraft.llm, provider: event.target.value }
+                      })}
+                    >
+                      {status?.availableProviders.map((provider) => (
+                        <option value={provider} key={provider}>{provider}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Chat model</span>
+                    <input
+                      value={settingsDraft.llm.model}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        llm: { ...settingsDraft.llm, model: event.target.value }
+                      })}
+                    />
+                  </label>
+                  <label>
+                    <span>Chat base URL</span>
+                    <input
+                      value={settingsDraft.llm.baseUrl}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        llm: { ...settingsDraft.llm, baseUrl: event.target.value }
+                      })}
+                    />
+                  </label>
+                  <label>
+                    <span>Chat API key</span>
+                    <input
+                      type="password"
+                      value={settingsDraft.llm.apiKey}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        llm: { ...settingsDraft.llm, apiKey: event.target.value }
+                      })}
+                    />
+                  </label>
+                  <label>
+                    <span>Optimizer mode</span>
+                    <select
+                      value={settingsDraft.optimizer.mode}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        optimizer: { ...settingsDraft.optimizer, mode: event.target.value }
+                      })}
+                    >
+                      <option value="retrieval">Retrieval only</option>
+                      <option value="compression">Compression</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Optimizer max tokens</span>
+                    <input
+                      type="number"
+                      min="300"
+                      max="8000"
+                      value={settingsDraft.optimizer.maxTokens}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        optimizer: { ...settingsDraft.optimizer, maxTokens: Number(event.target.value) }
+                      })}
+                    />
+                  </label>
+                  <label className="toggleRow">
+                    <input
+                      type="checkbox"
+                      checked={settingsDraft.localLlm.enabled}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        localLlm: { ...settingsDraft.localLlm, enabled: event.target.checked }
+                      })}
+                    />
+                    <span>Enable local LLM compression</span>
+                  </label>
+                  <label>
+                    <span>Local LLM provider</span>
+                    <select
+                      value={settingsDraft.localLlm.provider}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        localLlm: { ...settingsDraft.localLlm, provider: event.target.value }
+                      })}
+                    >
+                      <option value="ollama">Ollama</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Local LLM base URL</span>
+                    <input
+                      value={settingsDraft.localLlm.baseUrl}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        localLlm: { ...settingsDraft.localLlm, baseUrl: event.target.value }
+                      })}
+                    />
+                  </label>
+                  <label>
+                    <span>Local LLM model</span>
+                    <input
+                      value={settingsDraft.localLlm.model}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        localLlm: { ...settingsDraft.localLlm, model: event.target.value }
+                      })}
+                    />
+                  </label>
+                  <label className="wideSetting">
+                    <span>Repository path</span>
+                    <input
+                      value={settingsDraft.repositoryAgent.path}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        repositoryAgent: { ...settingsDraft.repositoryAgent, path: event.target.value }
+                      })}
+                    />
+                  </label>
+                  <label className="toggleRow">
+                    <input
+                      type="checkbox"
+                      checked={settingsDraft.repositoryAgent.scheduled}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        repositoryAgent: { ...settingsDraft.repositoryAgent, scheduled: event.target.checked }
+                      })}
+                    />
+                    <span>Enable scheduled repository scan</span>
+                  </label>
+                  <label>
+                    <span>Repository scan interval ms</span>
+                    <input
+                      type="number"
+                      min="30000"
+                      value={settingsDraft.repositoryAgent.intervalMs}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        repositoryAgent: { ...settingsDraft.repositoryAgent, intervalMs: Number(event.target.value) }
+                      })}
+                    />
+                  </label>
+                </div>
+              </section>
+            )}
           </section>
         )}
       </section>

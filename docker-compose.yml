@@ -19,10 +19,25 @@ services:
       RAGEKHAB_LLM_MODEL: ${RAGEKHAB_LLM_MODEL:-llama3.1}
       RAGEKHAB_LLM_BASE_URL: ${RAGEKHAB_LLM_BASE_URL:-http://host.docker.internal:11434}
       RAGEKHAB_LLM_API_KEY: ${RAGEKHAB_LLM_API_KEY:-}
+      RAGEKHAB_OPTIMIZER_MODE: ${RAGEKHAB_OPTIMIZER_MODE:-retrieval}
+      RAGEKHAB_OPTIMIZER_MAX_TOKENS: ${RAGEKHAB_OPTIMIZER_MAX_TOKENS:-3000}
+      RAGEKHAB_LOCAL_LLM_ENABLED: ${RAGEKHAB_LOCAL_LLM_ENABLED:-false}
+      RAGEKHAB_LOCAL_LLM_PROVIDER: ${RAGEKHAB_LOCAL_LLM_PROVIDER:-ollama}
+      RAGEKHAB_LOCAL_LLM_BASE_URL: ${RAGEKHAB_LOCAL_LLM_BASE_URL:-http://host.docker.internal:11434}
+      RAGEKHAB_LOCAL_LLM_MODEL: ${RAGEKHAB_LOCAL_LLM_MODEL:-qwen2.5:7b}
+      RAGEKHAB_REPOSITORY_PATH: ${RAGEKHAB_REPOSITORY_PATH:-}
+      RAGEKHAB_REPOSITORY_SCHEDULED: ${RAGEKHAB_REPOSITORY_SCHEDULED:-false}
+      RAGEKHAB_REPOSITORY_SCAN_INTERVAL_MS: ${RAGEKHAB_REPOSITORY_SCAN_INTERVAL_MS:-300000}
     ports:
       - "8080:8080"
     depends_on:
       - qdrant
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
     volumes:
       - document_data:/app/data/documents
 
@@ -33,7 +48,8 @@ services:
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   qdrant_data:
