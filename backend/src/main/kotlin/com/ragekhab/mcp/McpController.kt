@@ -1,9 +1,17 @@
 package com.ragekhab.mcp
 
 import com.ragekhab.chat.ChatService
+import com.ragekhab.context.ContextOptimizationRequest
+import com.ragekhab.context.ContextOptimizerService
 import com.ragekhab.document.DocumentService
+import com.ragekhab.memory.MemoryService
+import com.ragekhab.memory.MemoryType
+import com.ragekhab.memory.RecallMemoryRequest
+import com.ragekhab.memory.RememberRequest
 import com.ragekhab.project.CreateProjectRequest
 import com.ragekhab.project.ProjectService
+import com.ragekhab.repository.RepositoryAgentService
+import com.ragekhab.repository.RepositoryScanRequest
 import com.ragekhab.search.SemanticSearchService
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -20,6 +28,9 @@ data class JsonRpcError(val code: Int, val message: String)
 class McpController(
     private val searchService: SemanticSearchService,
     private val chatService: ChatService,
+    private val optimizerService: ContextOptimizerService,
+    private val memoryService: MemoryService,
+    private val repositoryAgent: RepositoryAgentService,
     private val documentService: DocumentService,
     private val projectService: ProjectService,
 ) {
@@ -46,6 +57,45 @@ class McpController(
             "list_projects" -> mapOf("projects" to projectService.list())
             "add_text" -> documentService.addText(arguments["title"].toString(), arguments["text"].toString(), projectId)
             "search_documents" -> mapOf("results" to searchService.search(arguments["query"].toString(), arguments["limit"]?.toString()?.toIntOrNull() ?: 8, projectId))
+            "remember" -> memoryService.remember(
+                RememberRequest(
+                    type = arguments["type"]?.toString()?.let(::parseMemoryType) ?: error("Missing memory type"),
+                    content = arguments["content"]?.toString() ?: error("Missing memory content"),
+                    confidence = arguments["confidence"]?.toString()?.toDoubleOrNull() ?: 0.85,
+                    repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
+                    module = arguments["module"]?.toString()?.takeIf { it.isNotBlank() },
+                ),
+            )
+            "recall_memory" -> memoryService.recall(
+                RecallMemoryRequest(
+                    task = arguments["task"]?.toString() ?: error("Missing task"),
+                    limit = arguments["limit"]?.toString()?.toIntOrNull() ?: 8,
+                    repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
+                    module = arguments["module"]?.toString()?.takeIf { it.isNotBlank() },
+                    type = arguments["type"]?.toString()?.takeIf { it.isNotBlank() }?.let(::parseMemoryType),
+                ),
+            )
+            "list_memories" -> mapOf("memories" to memoryService.list())
+            "delete_memory" -> mapOf("deleted" to memoryService.delete(UUID.fromString(arguments["id"]?.toString() ?: error("Missing memory id"))))
+            "learn_from_session" -> mapOf("status" to "planned", "message" to "Automatic session memory extraction is reserved for a future release.")
+            "scan_repository" -> repositoryAgent.scan(
+                RepositoryScanRequest(
+                    path = arguments["path"]?.toString()?.takeIf { it.isNotBlank() },
+                    full = arguments["full"]?.toString()?.toBooleanStrictOrNull() ?: false,
+                ),
+            )
+            "repository_status" -> repositoryAgent.status()
+            "optimize_context" -> optimizerService.optimize(
+                ContextOptimizationRequest(
+                    task = arguments["task"]?.toString() ?: error("Missing task"),
+                    projectId = arguments["projectId"]?.toString()?.takeIf { it.isNotBlank() },
+                    repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
+                    module = arguments["module"]?.toString()?.takeIf { it.isNotBlank() },
+                    maxTokens = arguments["maxTokens"]?.toString()?.toIntOrNull(),
+                    candidateLimit = arguments["candidateLimit"]?.toString()?.toIntOrNull() ?: 30,
+                    targetTokens = arguments["targetTokens"]?.toString()?.toIntOrNull(),
+                ),
+            )
             "ask_knowledge_base" -> chatService.ask(arguments["question"].toString(), arguments["limit"]?.toString()?.toIntOrNull() ?: 8, projectId)
             "list_documents" -> mapOf("documents" to documentService.list(projectId))
             "get_document" -> documentService.get(UUID.fromString(arguments["id"].toString())) ?: error("Document not found")
@@ -59,11 +109,25 @@ class McpController(
         tool("list_projects", "List knowledge base projects.", emptyMap()),
         tool("add_text", "Add typed or pasted text to the knowledge base.", mapOf("title" to "string", "text" to "string", "projectId" to "string")),
         tool("search_documents", "Search indexed private documents semantically, optionally within a project.", mapOf("query" to "string", "limit" to "number", "projectId" to "string")),
+        tool("remember", "Store a durable structured memory for future coding-agent sessions.", mapOf("type" to "string", "content" to "string", "confidence" to "number", "repository" to "string", "module" to "string")),
+        tool("recall_memory", "Retrieve relevant long-term memories before working on a coding task.", mapOf("task" to "string", "limit" to "number", "repository" to "string", "module" to "string", "type" to "string")),
+        tool("list_memories", "List stored coding-agent memories.", emptyMap()),
+        tool("delete_memory", "Delete a stored coding-agent memory.", mapOf("id" to "string")),
+        tool("learn_from_session", "Future tool: extract durable memories from completed coding work.", mapOf("session" to "string")),
+        tool("scan_repository", "Scan and synchronize a repository into the knowledge base.", mapOf("path" to "string", "full" to "boolean")),
+        tool("repository_status", "Return repository-agent synchronization metadata.", emptyMap()),
+        tool("optimize_context", "Return the smallest Claude Code context needed to complete a coding task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
         tool("ask_knowledge_base", "Ask a question and receive an answer with sources, optionally within a project.", mapOf("question" to "string", "limit" to "number", "projectId" to "string")),
         tool("list_documents", "List uploaded documents, optionally within a project.", mapOf("projectId" to "string")),
         tool("get_document", "Return document metadata and chunks.", mapOf("id" to "string")),
         tool("delete_document", "Delete a document and its indexed chunks.", mapOf("id" to "string")),
     )
+
+    private fun parseMemoryType(value: String): MemoryType {
+        val normalized = value.filter { it.isLetterOrDigit() }.lowercase()
+        return MemoryType.entries.firstOrNull { it.name.filter { char -> char.isLetterOrDigit() }.lowercase() == normalized }
+            ?: error("Unsupported memory type '$value'. Available: ${MemoryType.entries.joinToString { it.name }}")
+    }
 
     private fun tool(name: String, description: String, properties: Map<String, String>) = mapOf(
         "name" to name,
