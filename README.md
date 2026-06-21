@@ -4,7 +4,7 @@ RAG-e Khab is a self-hosted knowledge and persistent memory system for coding ag
 
 It keeps the original RAG workflow for uploading, indexing, searching, and chatting with private knowledge, and adds long-term project memory plus context optimization for Claude Code, Codex, Cursor, Gemini CLI, and other MCP-compatible coding agents.
 
-```
+```mermaid
 flowchart TD
     A[Your Codebase] --> B[Repository Agent]
     B --> C[RAG-e Khab Backend]
