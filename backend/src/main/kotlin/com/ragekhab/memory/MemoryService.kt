@@ -35,6 +35,7 @@ class MemoryService(
             createdAt = Instant.now(),
             repository = request.repository?.trim()?.takeIf { it.isNotBlank() },
             module = request.module?.trim()?.takeIf { it.isNotBlank() },
+            projectIds = listOf(request.projectId ?: ProjectRepository.DEFAULT_PROJECT_ID),
         )
         repository.save(memory)
         vectorIndex.upsert(listOf(memory.toChunk()))
@@ -73,7 +74,27 @@ class MemoryService(
         return RecallMemoryResponse(updated.map { it.toRelevantMemory() })
     }
 
-    fun list(): List<AgentMemory> = repository.list()
+    fun list(projectId: UUID? = null): List<AgentMemory> =
+        repository.list().filter { memory ->
+            projectId == null || projectId in memory.normalizedProjectIds()
+        }
+
+    fun linkToProject(memoryId: UUID, projectId: UUID): AgentMemory {
+        val memory = repository.get(memoryId) ?: error("Memory not found.")
+        val updated = memory.copy(projectIds = (memory.normalizedProjectIds() + projectId).distinct())
+        repository.save(updated)
+        vectorIndex.upsert(listOf(updated.toChunk()))
+        return updated
+    }
+
+    fun unlinkFromProject(memoryId: UUID, projectId: UUID): AgentMemory {
+        val memory = repository.get(memoryId) ?: error("Memory not found.")
+        val remaining = memory.normalizedProjectIds().filter { it != projectId }
+        val updated = memory.copy(projectIds = remaining.ifEmpty { listOf(ProjectRepository.DEFAULT_PROJECT_ID) })
+        repository.save(updated)
+        vectorIndex.upsert(listOf(updated.toChunk()))
+        return updated
+    }
 
     fun delete(id: UUID): Boolean {
         val deleted = repository.delete(id)
@@ -102,13 +123,14 @@ class MemoryService(
         if (repositoryFilter != null && repository?.lowercase() != repositoryFilter) return false
         val moduleFilter = request.module?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
         if (moduleFilter != null && module?.lowercase() != moduleFilter) return false
+        if (request.projectId != null && request.projectId !in normalizedProjectIds()) return false
         return true
     }
 
     private fun AgentMemory.toChunk(): DocumentChunk =
         DocumentChunk(
             id = memoryChunkId(id),
-            projectId = ProjectRepository.DEFAULT_PROJECT_ID,
+            projectId = normalizedProjectIds().firstOrNull() ?: ProjectRepository.DEFAULT_PROJECT_ID,
             projectName = ProjectRepository.DEFAULT_PROJECT_NAME,
             documentId = id,
             documentName = "memory-${type.name}-$id",
@@ -119,10 +141,14 @@ class MemoryService(
     private fun AgentMemory.searchText(): String =
         listOfNotNull(
             "Type: ${type.name}",
+            "Projects: ${normalizedProjectIds().joinToString()}",
             repository?.let { "Repository: $it" },
             module?.let { "Module: $it" },
             content,
         ).joinToString("\n")
+
+    private fun AgentMemory.normalizedProjectIds(): List<UUID> =
+        projectIds.ifEmpty { listOf(ProjectRepository.DEFAULT_PROJECT_ID) }
 
     private fun SearchResult.memoryId(): UUID? =
         chunkId.removePrefix(MEMORY_CHUNK_PREFIX)
@@ -141,6 +167,7 @@ class MemoryService(
             lastAccessedAt = memory.lastAccessedAt,
             repository = memory.repository,
             module = memory.module,
+            projectIds = memory.normalizedProjectIds(),
         )
 
     private fun String.normalizedTerms(): Set<String> =
