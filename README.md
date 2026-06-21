@@ -4,6 +4,41 @@ RAG-e Khab is a self-hosted knowledge and persistent memory system for coding ag
 
 It keeps the original RAG workflow for uploading, indexing, searching, and chatting with private knowledge, and adds long-term project memory plus context optimization for Claude Code, Codex, Cursor, Gemini CLI, and other MCP-compatible coding agents.
 
+```
+flowchart TD
+    A[Your Codebase] --> B[Repository Agent]
+    B --> C[RAG-e Khab Backend]
+
+    D[Documents / Notes] --> C
+
+    C --> E[Chunker]
+    E --> F[Embedding System]
+    F --> G[Qdrant Vector Store]
+
+    C --> H[Memory Store]
+
+    I[Claude Code] --> J[MCP Tools]
+    J --> C
+
+    C --> K[Context Optimizer]
+
+    K --> H
+    K --> G
+
+    K --> L{Optimizer Mode}
+
+    L -->|Retrieval Only| M[Relevant Context]
+    L -->|Compression Optional| N[Local LLM / Ollama]
+    N --> M
+
+    M --> I
+
+    subgraph Optional
+        N
+    end
+
+```
+
 ## Stack
 
 - Kotlin, Java 25, Spring Boot 4, Gradle Kotlin DSL
