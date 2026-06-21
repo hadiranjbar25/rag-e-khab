@@ -100,11 +100,35 @@ type RuntimeSettings = {
     baseUrl: string;
     model: string;
   };
+  embedding: {
+    provider: string;
+    model: string;
+    baseUrl: string;
+    dimensions: number;
+  };
   repositoryAgent: {
     path: string;
     scheduled: boolean;
     intervalMs: number;
   };
+};
+
+type RepositoryScanResult = {
+  repository: string;
+  repositoryRoot: string;
+  scannedFiles: number;
+  indexedFiles: number;
+  unchangedFiles: number;
+  deletedFiles: number;
+  skippedFiles: number;
+};
+
+type DeleteProjectResult = {
+  deleted: boolean;
+  projectId: string;
+  projectName: string;
+  deletedDocuments: number;
+  deletedRepositoryMetadata: number;
 };
 
 type View = 'home' | 'projects' | 'knowledge' | 'optimizer' | 'chat' | 'admin';
@@ -118,6 +142,16 @@ const viewRoutes: Record<View, string> = {
   chat: '/chat',
   admin: '/admin'
 };
+
+const CUSTOM_MODEL = '__custom__';
+const DISABLED_MODEL = '__disabled__';
+const chatModelOptions = ['llama3.1', 'qwen2.5:7b', 'mistral', 'codellama'];
+const compressionModelOptions = ['qwen2.5:7b', 'llama3.1', 'mistral'];
+const embeddingModelOptions = ['nomic-embed-text', 'bge-m3'];
+
+function selectValue(value: string, options: string[]): string {
+  return options.includes(value) ? value : CUSTOM_MODEL;
+}
 
 function viewFromPath(pathname: string): View {
   const normalized = pathname.replace(/\/+$/, '') || '/';
@@ -148,6 +182,10 @@ function App() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<RuntimeSettings | null>(null);
+  const [repositoryName, setRepositoryName] = useState('');
+  const [repositoryPath, setRepositoryPath] = useState('');
+  const [repositoryFullScan, setRepositoryFullScan] = useState(false);
+  const [repositoryScan, setRepositoryScan] = useState<RepositoryScanResult | null>(null);
   const [question, setQuestion] = useState('');
   const [task, setTask] = useState('');
   const [optimizedContext, setOptimizedContext] = useState<OptimizedContext | null>(null);
@@ -177,6 +215,9 @@ function App() {
     setDocuments(docs);
     setStatus(admin);
     setSettingsDraft(admin.settings);
+    if (!repositoryPath && admin.settings.repositoryAgent.path) {
+      setRepositoryPath(admin.settings.repositoryAgent.path);
+    }
   };
 
   useEffect(() => {
@@ -339,8 +380,32 @@ function App() {
     }
   };
 
+  const deleteProject = async (project: ProjectItem) => {
+    if (project.name === 'General') return;
+    const confirmed = window.confirm(`Delete project "${project.name}" and ${project.documentCount} document(s)?`);
+    if (!confirmed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await request<DeleteProjectResult>(`/api/projects/${project.id}`, { method: 'DELETE' });
+      if (selectedProjectId === project.id) {
+        const fallback = projects.find((item) => item.id !== project.id)?.id ?? '';
+        setSelectedProjectId(fallback);
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Project deletion failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveSettings = async () => {
     if (!settingsDraft) return;
+    if (settingsDraft.optimizer.mode === 'compression' && !settingsDraft.localLlm.enabled) {
+      setError('Enable local LLM compression before saving compression mode.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -353,6 +418,33 @@ function App() {
       setStatus((current) => current ? { ...current, settings } : current);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Settings update failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const scanRepository = async () => {
+    const path = repositoryPath.trim() || settingsDraft?.repositoryAgent.path.trim();
+    if (!path) {
+      setError('Repository path is required.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await request<RepositoryScanResult>('/api/repository-agent/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repository: repositoryName.trim() || undefined,
+          path,
+          full: repositoryFullScan
+        })
+      });
+      setRepositoryScan(result);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Repository scan failed');
     } finally {
       setBusy(false);
     }
@@ -464,15 +556,26 @@ function App() {
             </div>
             <div className="projectGrid">
               {projects.map((project) => (
-                <button
+                <div
                   className={project.id === selectedProjectId ? 'projectCard active' : 'projectCard'}
-                  onClick={() => setSelectedProjectId(project.id)}
                   key={project.id}
                 >
-                  <span>{project.name}</span>
-                  <strong>{project.documentCount}</strong>
-                  <small>{new Date(project.createdAt).toLocaleDateString()}</small>
-                </button>
+                  <div>
+                    <span>{project.name}</span>
+                    <strong>{project.documentCount}</strong>
+                    <small>{new Date(project.createdAt).toLocaleDateString()}</small>
+                  </div>
+                  <div className="projectActions">
+                    <button className="ghostButton" onClick={() => setSelectedProjectId(project.id)} disabled={busy}>
+                      <span>Select</span>
+                    </button>
+                    {project.name !== 'General' && (
+                      <button className="iconButton dangerButton" onClick={() => deleteProject(project)} disabled={busy} title="Delete project">
+                        <Trash2 size={18} />
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
           </section>
@@ -652,14 +755,35 @@ function App() {
                   </label>
                   <label>
                     <span>Chat model</span>
-                    <input
-                      value={settingsDraft.llm.model}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        llm: { ...settingsDraft.llm, model: event.target.value }
-                      })}
-                    />
+                    <select
+                      value={selectValue(settingsDraft.llm.model, chatModelOptions)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSettingsDraft({
+                          ...settingsDraft,
+                          llm: { ...settingsDraft.llm, model: value === CUSTOM_MODEL ? '' : value }
+                        });
+                      }}
+                    >
+                      {chatModelOptions.map((model) => (
+                        <option value={model} key={model}>{model}</option>
+                      ))}
+                      <option value={CUSTOM_MODEL}>custom</option>
+                    </select>
                   </label>
+                  {selectValue(settingsDraft.llm.model, chatModelOptions) === CUSTOM_MODEL && (
+                    <label>
+                      <span>Custom chat model</span>
+                      <input
+                        value={settingsDraft.llm.model}
+                        placeholder="model name"
+                        onChange={(event) => setSettingsDraft({
+                          ...settingsDraft,
+                          llm: { ...settingsDraft.llm, model: event.target.value }
+                        })}
+                      />
+                    </label>
+                  )}
                   <label>
                     <span>Chat base URL</span>
                     <input
@@ -691,8 +815,9 @@ function App() {
                       })}
                     >
                       <option value="retrieval">Retrieval only</option>
-                      <option value="compression">Compression</option>
+                      <option value="compression" disabled={!settingsDraft.localLlm.enabled}>Compression</option>
                     </select>
+                    {!settingsDraft.localLlm.enabled && <small className="settingHint">Enable local LLM compression to use compression mode.</small>}
                   </label>
                   <label>
                     <span>Optimizer max tokens</span>
@@ -713,6 +838,7 @@ function App() {
                       checked={settingsDraft.localLlm.enabled}
                       onChange={(event) => setSettingsDraft({
                         ...settingsDraft,
+                        optimizer: event.target.checked ? settingsDraft.optimizer : { ...settingsDraft.optimizer, mode: 'retrieval' },
                         localLlm: { ...settingsDraft.localLlm, enabled: event.target.checked }
                       })}
                     />
@@ -741,12 +867,120 @@ function App() {
                     />
                   </label>
                   <label>
-                    <span>Local LLM model</span>
-                    <input
-                      value={settingsDraft.localLlm.model}
+                    <span>Compression model</span>
+                    <select
+                      value={!settingsDraft.localLlm.enabled ? DISABLED_MODEL : selectValue(settingsDraft.localLlm.model, compressionModelOptions)}
+                      disabled={settingsDraft.optimizer.mode === 'retrieval'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSettingsDraft({
+                          ...settingsDraft,
+                          optimizer: value === DISABLED_MODEL ? { ...settingsDraft.optimizer, mode: 'retrieval' } : settingsDraft.optimizer,
+                          localLlm: {
+                            ...settingsDraft.localLlm,
+                            enabled: value !== DISABLED_MODEL,
+                            model: value === CUSTOM_MODEL ? '' : value === DISABLED_MODEL ? settingsDraft.localLlm.model : value
+                          }
+                        });
+                      }}
+                    >
+                      <option value={DISABLED_MODEL}>disabled</option>
+                      {compressionModelOptions.map((model) => (
+                        <option value={model} key={model}>{model}</option>
+                      ))}
+                      <option value={CUSTOM_MODEL}>custom</option>
+                    </select>
+                  </label>
+                  {settingsDraft.localLlm.enabled && selectValue(settingsDraft.localLlm.model, compressionModelOptions) === CUSTOM_MODEL && (
+                    <label>
+                      <span>Custom compression model</span>
+                      <input
+                        value={settingsDraft.localLlm.model}
+                        placeholder="model name"
+                        disabled={settingsDraft.optimizer.mode === 'retrieval'}
+                        onChange={(event) => setSettingsDraft({
+                          ...settingsDraft,
+                          localLlm: { ...settingsDraft.localLlm, model: event.target.value }
+                        })}
+                      />
+                    </label>
+                  )}
+                  <label>
+                    <span>Embedding provider</span>
+                    <select
+                      value={settingsDraft.embedding.provider}
                       onChange={(event) => setSettingsDraft({
                         ...settingsDraft,
-                        localLlm: { ...settingsDraft.localLlm, model: event.target.value }
+                        embedding: {
+                          ...settingsDraft.embedding,
+                          provider: event.target.value,
+                          model: event.target.value === 'hash' ? 'hash-based embedder' : settingsDraft.embedding.model === 'hash-based embedder' ? 'nomic-embed-text' : settingsDraft.embedding.model,
+                          dimensions: event.target.value === 'hash' ? 384 : settingsDraft.embedding.dimensions
+                        }
+                      })}
+                    >
+                      <option value="hash">Hash fallback</option>
+                      <option value="ollama">Ollama</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Embedding model</span>
+                    <select
+                      value={settingsDraft.embedding.provider === 'hash' ? 'hash-based embedder' : selectValue(settingsDraft.embedding.model, embeddingModelOptions)}
+                      disabled={settingsDraft.embedding.provider === 'hash'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSettingsDraft({
+                          ...settingsDraft,
+                          embedding: { ...settingsDraft.embedding, model: value === CUSTOM_MODEL ? '' : value }
+                        });
+                      }}
+                    >
+                      {settingsDraft.embedding.provider === 'hash' ? (
+                        <option value="hash-based embedder">hash-based embedder</option>
+                      ) : (
+                        <>
+                          {embeddingModelOptions.map((model) => (
+                            <option value={model} key={model}>{model}</option>
+                          ))}
+                          <option value={CUSTOM_MODEL}>custom</option>
+                        </>
+                      )}
+                    </select>
+                  </label>
+                  {settingsDraft.embedding.provider === 'ollama' && selectValue(settingsDraft.embedding.model, embeddingModelOptions) === CUSTOM_MODEL && (
+                    <label>
+                      <span>Custom embedding model</span>
+                      <input
+                        value={settingsDraft.embedding.model}
+                        placeholder="embedding model"
+                        onChange={(event) => setSettingsDraft({
+                          ...settingsDraft,
+                          embedding: { ...settingsDraft.embedding, model: event.target.value }
+                        })}
+                      />
+                    </label>
+                  )}
+                  <label className="wideSetting">
+                    <span>Embedding base URL</span>
+                    <input
+                      value={settingsDraft.embedding.baseUrl}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        embedding: { ...settingsDraft.embedding, baseUrl: event.target.value }
+                      })}
+                    />
+                  </label>
+                  <label>
+                    <span>Embedding dimensions</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="8192"
+                      value={settingsDraft.embedding.dimensions}
+                      onChange={(event) => setSettingsDraft({
+                        ...settingsDraft,
+                        embedding: { ...settingsDraft.embedding, dimensions: Number(event.target.value) }
                       })}
                     />
                   </label>
@@ -783,6 +1017,41 @@ function App() {
                       })}
                     />
                   </label>
+                  <label>
+                    <span>Scan repository name</span>
+                    <input
+                      value={repositoryName}
+                      placeholder="billing-api"
+                      onChange={(event) => setRepositoryName(event.target.value)}
+                    />
+                  </label>
+                  <label className="wideSetting">
+                    <span>Scan repository path</span>
+                    <input
+                      value={repositoryPath}
+                      placeholder="/path/to/repository"
+                      onChange={(event) => setRepositoryPath(event.target.value)}
+                    />
+                  </label>
+                  <label className="toggleRow">
+                    <input
+                      type="checkbox"
+                      checked={repositoryFullScan}
+                      onChange={(event) => setRepositoryFullScan(event.target.checked)}
+                    />
+                    <span>Full scan</span>
+                  </label>
+                  <div className="wideSetting scanActions">
+                    <button onClick={scanRepository} disabled={busy || !repositoryPath.trim()}>
+                      <RefreshCw size={18} />
+                      <span>Scan repository</span>
+                    </button>
+                    {repositoryScan && (
+                      <small>
+                        {repositoryScan.repository}: {repositoryScan.indexedFiles} indexed, {repositoryScan.unchangedFiles} unchanged, {repositoryScan.deletedFiles} deleted, {repositoryScan.skippedFiles} skipped
+                      </small>
+                    )}
+                  </div>
                 </div>
               </section>
             )}

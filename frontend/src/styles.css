@@ -303,6 +303,7 @@ textarea {
   padding: 16px;
   text-align: left;
   display: grid;
+  gap: 14px;
 }
 
 .projectCard span,
@@ -323,6 +324,17 @@ textarea {
 .projectCard.active {
   border-color: #1f7a6d;
   box-shadow: inset 0 0 0 1px #1f7a6d;
+}
+
+.projectActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dangerButton {
+  background: #fff1f1;
+  color: #a13333;
 }
 
 .segmented {
@@ -607,6 +619,12 @@ textarea {
   font-size: 0.9rem;
 }
 
+.settingHint {
+  color: #8a6a2a;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .settingsGrid .toggleRow {
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
@@ -615,6 +633,18 @@ textarea {
 
 .settingsGrid .wideSetting {
   grid-column: 1 / -1;
+}
+
+.scanActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.scanActions small {
+  color: #6f7883;
+  overflow-wrap: anywhere;
 }
 
 .toggleRow input {

@@ -22,7 +22,7 @@ class TextEmbedder {
 
     fun cosine(a: List<Float>, b: List<Float>): Double {
         if (a.isEmpty() || b.isEmpty()) return 0.0
-        return a.indices.sumOf { index -> (a[index] * b[index]).toDouble() }
+        return (0 until minOf(a.size, b.size)).sumOf { index -> (a[index] * b[index]).toDouble() }
     }
 
     private fun tokens(text: String): List<String> =

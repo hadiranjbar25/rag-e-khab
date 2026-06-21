@@ -13,7 +13,7 @@ ragekhab-memory-skill/
 
 ## `SKILL.md`
 
-```md
+````md
 ---
 name: ragekhab-memory
 description: Use RAG-e Khab MCP to recall project memory and optimized coding context before exploring files.
@@ -37,7 +37,9 @@ For coding tasks:
 
 For repository sync:
 1. Use `repository_status`.
-2. Use `scan_repository` only if knowledge appears stale.
+2. Prefer the repo-local `ragekhab-agent.jar` sync workflow. Its default `claude` profile sends repository structure, summaries, key docs, and best-practice context instead of all source files.
+3. Use `scan_repository` only for paths visible to the backend container/process.
+4. Use `--profile source` only when the user explicitly wants full source indexing.
 
 ## Token Rules
 
@@ -86,7 +88,26 @@ Coding task:
   }
 }
 ```
+
+Repository sync command:
+
+```bash
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository billing-api --path .
 ```
+
+Backend-visible repository scan:
+
+```json
+{
+  "tool": "scan_repository",
+  "arguments": {
+    "repository": "billing-api",
+    "path": "/repos/billing-api",
+    "full": false
+  }
+}
+```
+````
 
 ## Minimal Prompts
 

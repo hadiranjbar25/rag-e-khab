@@ -32,8 +32,26 @@ class RepositoryMetadataStore(
     fun activeForRoot(root: String): List<RepositoryFileMetadata> =
         files.values.filter { it.repositoryRoot == root && !it.deleted }
 
+    fun activeForRepository(repository: String, root: String): List<RepositoryFileMetadata> =
+        files.values.filter {
+            it.repository.equals(repository, ignoreCase = true) &&
+                it.repositoryRoot == root &&
+                !it.deleted
+        }
+
     fun list(): List<RepositoryFileMetadata> =
         files.values.sortedWith(compareBy<RepositoryFileMetadata> { it.repositoryRoot }.thenBy { it.filePath })
+
+    fun deleteRepository(repository: String): Int {
+        val normalized = repository.trim()
+        if (normalized.isBlank()) return 0
+        val ids = files.values
+            .filter { it.repository.equals(normalized, ignoreCase = true) }
+            .map { it.documentId }
+        ids.forEach(files::remove)
+        if (ids.isNotEmpty()) persist()
+        return ids.size
+    }
 
     private fun load() {
         if (!Files.exists(storagePath)) return

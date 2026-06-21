@@ -13,6 +13,9 @@ class ProjectService(
     fun create(request: CreateProjectRequest): Project {
         val name = request.name.trim()
         require(name.isNotBlank()) { "Project name must not be blank." }
+        projectRepository.list()
+            .firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ?.let { return it }
         return projectRepository.save(
             Project(
                 id = UUID.randomUUID(),
@@ -44,4 +47,17 @@ class ProjectService(
         get(id) ?: error("Project not found")
 
     fun defaultProject(): Project = projectRepository.ensureDefault()
+
+    fun findOrCreate(name: String, description: String? = null): Project {
+        val normalized = name.trim()
+        require(normalized.isNotBlank()) { "Project name must not be blank." }
+        return projectRepository.list()
+            .firstOrNull { it.name.equals(normalized, ignoreCase = true) }
+            ?: create(CreateProjectRequest(normalized, description))
+    }
+
+    fun delete(id: UUID): Boolean {
+        require(id != ProjectRepository.DEFAULT_PROJECT_ID) { "The General project cannot be deleted." }
+        return projectRepository.delete(id)
+    }
 }

@@ -1,0 +1,638 @@
+package com.ragekhab.agent
+
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.security.MessageDigest
+import java.time.Instant
+import kotlin.io.path.extension
+import kotlin.io.path.invariantSeparatorsPathString
+import kotlin.io.path.isRegularFile
+import kotlin.io.path.name
+
+fun main(args: Array<String>) {
+    val options = CliOptions.parse(args)
+    if (options.help) {
+        println(usage())
+        return
+    }
+
+    val root = options.path.toAbsolutePath().normalize()
+    require(Files.isDirectory(root)) { "Repository path does not exist or is not a directory: $root" }
+
+    val repository = options.repository ?: root.fileName?.toString()?.takeIf { it.isNotBlank() } ?: "repository"
+    val discovered = discoverFiles(root, options.maxFileBytes)
+    val files = when (options.profile) {
+        SyncProfile.Claude -> buildClaudeContext(repository, root, discovered)
+        SyncProfile.Source -> discovered
+    }
+    println("RAG-e Khab agent scanning $repository at $root")
+    println("Discovered ${discovered.size} indexable file(s)")
+    println("Sync profile '${options.profile.value}' will send ${files.size} context artifact(s)")
+
+    if (options.dryRun) {
+        files.take(40).forEach { println("${it.path} (${it.language}, ${it.sizeBytes} bytes)") }
+        if (files.size > 40) println("... ${files.size - 40} more")
+        return
+    }
+
+    val client = HttpClient.newHttpClient()
+    var indexed = 0
+    var unchanged = 0
+    var skipped = 0
+    var deleted = 0
+    var batchNumber = 1
+
+    files.chunkByBytes(options.maxBatchBytes).forEach { batch ->
+        val response = postSync(
+            client = client,
+            server = options.server,
+            payload = syncPayload(
+                repository = repository,
+                repositoryRoot = root.invariantSeparatorsPathString,
+                full = false,
+                complete = false,
+                allPaths = emptyList(),
+                files = batch,
+            ),
+        )
+        indexed += response.intField("indexedFiles")
+        unchanged += response.intField("unchangedFiles")
+        skipped += response.intField("skippedFiles")
+        deleted += response.intField("deletedFiles")
+        println("Batch ${batchNumber++}: ${batch.size} file(s), ${response.compact()}")
+    }
+
+    if (options.full) {
+        val response = postSync(
+            client = client,
+            server = options.server,
+            payload = syncPayload(
+                repository = repository,
+                repositoryRoot = root.invariantSeparatorsPathString,
+                full = true,
+                complete = true,
+                allPaths = files.map { it.path },
+                files = emptyList(),
+            ),
+        )
+        deleted += response.intField("deletedFiles")
+        println("Full-sync cleanup: ${response.compact()}")
+    }
+
+    println("Done. indexed=$indexed unchanged=$unchanged deleted=$deleted skipped=$skipped")
+}
+
+private data class CliOptions(
+    val server: String = System.getenv("RAGEKHAB_URL") ?: "http://localhost:8080",
+    val repository: String? = null,
+    val path: Path = Path.of("."),
+    val profile: SyncProfile = SyncProfile.Claude,
+    val full: Boolean = true,
+    val dryRun: Boolean = false,
+    val maxBatchBytes: Int = 4_000_000,
+    val maxFileBytes: Long = 1_000_000,
+    val help: Boolean = false,
+) {
+    companion object {
+        fun parse(args: Array<String>): CliOptions {
+            var options = CliOptions()
+            var index = 0
+            while (index < args.size) {
+                val arg = args[index]
+                fun value(): String {
+                    require(index + 1 < args.size) { "Missing value for $arg" }
+                    index += 1
+                    return args[index]
+                }
+                options = when (arg) {
+                    "--server" -> options.copy(server = value().trimEnd('/'))
+                    "--repository", "--name" -> options.copy(repository = value())
+                    "--path" -> options.copy(path = Path.of(value()))
+                    "--profile" -> options.copy(profile = SyncProfile.parse(value()))
+                    "--include-source" -> options.copy(profile = if (value().toBooleanStrictOrNull() == true) SyncProfile.Source else SyncProfile.Claude)
+                    "--full" -> options.copy(full = value().toBooleanStrictOrNull() ?: error("--full must be true or false"))
+                    "--dry-run" -> options.copy(dryRun = true)
+                    "--max-batch-bytes" -> options.copy(maxBatchBytes = value().toInt().coerceAtLeast(250_000))
+                    "--max-file-bytes" -> options.copy(maxFileBytes = value().toLong().coerceAtLeast(10_000))
+                    "--help", "-h" -> options.copy(help = true)
+                    else -> error("Unknown argument: $arg")
+                }
+                index += 1
+            }
+            return options.copy(server = options.server.trimEnd('/'))
+        }
+    }
+}
+
+private enum class SyncProfile(val value: String) {
+    Claude("claude"),
+    Source("source");
+
+    companion object {
+        fun parse(value: String): SyncProfile =
+            entries.firstOrNull { it.value == value.lowercase() }
+                ?: error("Unsupported profile '$value'. Use: ${entries.joinToString { it.value }}")
+    }
+}
+
+private data class AgentFile(
+    val path: String,
+    val module: String,
+    val language: String,
+    val lastModifiedAt: Instant,
+    val sizeBytes: Long,
+    val contentHash: String,
+    val content: String,
+)
+
+private fun discoverFiles(root: Path, maxFileBytes: Long): List<AgentFile> =
+    Files.walk(root).use { stream ->
+        stream
+            .filter { it.isRegularFile() }
+            .filter { path -> !isIgnored(root.relativize(path)) }
+            .filter { path -> isIndexable(path) }
+            .map { path -> toAgentFile(root, path, maxFileBytes) }
+            .filter { it != null }
+            .map { it!! }
+            .toList()
+    }
+
+private fun toAgentFile(root: Path, path: Path, maxFileBytes: Long): AgentFile? {
+    val size = Files.size(path)
+    if (size > maxFileBytes) return null
+    val bytes = Files.readAllBytes(path)
+    val content = readUtf8(bytes) ?: return null
+    val relative = root.relativize(path).invariantSeparatorsPathString
+    return AgentFile(
+        path = relative,
+        module = moduleFor(relative),
+        language = languageFor(path),
+        lastModifiedAt = Files.getLastModifiedTime(path).toInstant(),
+        sizeBytes = size,
+        contentHash = sha256(bytes),
+        content = content,
+    )
+}
+
+private fun buildClaudeContext(repository: String, root: Path, files: List<AgentFile>): List<AgentFile> {
+    val artifacts = mutableListOf<AgentFile>()
+    artifacts += virtualFile(
+        path = ".ragekhab/repository-map.md",
+        content = repositoryMap(repository, root, files),
+    )
+    artifacts += virtualFile(
+        path = ".ragekhab/source-index.md",
+        content = sourceIndex(files),
+    )
+    files.groupBy { it.module }
+        .toSortedMap()
+        .forEach { (module, moduleFiles) ->
+            artifacts += virtualFile(
+                path = ".ragekhab/modules/${module.sanitizePathSegment()}.md",
+                content = moduleSummary(module, moduleFiles),
+            )
+        }
+    artifacts += files
+        .filter {
+            !it.isLockFile() &&
+                (it.isKnowledgeFile() || it.isBuildConfigFile() || (it.isBestPracticeFile() && !it.isSourceFile()))
+        }
+        .sortedWith(compareBy<AgentFile> { it.path.depth() }.thenBy { it.path })
+        .take(40)
+        .map { it.copy(path = ".ragekhab/selected/${it.path}") }
+    return artifacts.distinctBy { it.path }
+}
+
+private fun repositoryMap(repository: String, root: Path, files: List<AgentFile>): String = buildString {
+    appendLine("# Repository Context: $repository")
+    appendLine()
+    appendLine("Generated by RAG-e Khab Repository Agent for coding assistants.")
+    appendLine()
+    appendLine("## Purpose")
+    appendLine()
+    appendLine("Use this as repository orientation before reading source files. It preserves structure, key conventions, and implementation landmarks without indexing the full codebase.")
+    appendLine()
+    appendLine("## Repository")
+    appendLine()
+    appendLine("- Root: `${root.invariantSeparatorsPathString}`")
+    appendLine("- Indexable files discovered: ${files.size}")
+    appendLine("- Modules: ${files.map { it.module }.distinct().sorted().joinToString(", ")}")
+    appendLine()
+    appendLine("## Languages")
+    appendLine()
+    files.groupingBy { it.language }.eachCount().toList()
+        .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+        .forEach { (language, count) -> appendLine("- $language: $count file(s)") }
+    appendLine()
+    appendLine("## Build And Test Hints")
+    appendLine()
+    inferCommands(files).forEach { appendLine("- `$it`") }
+    appendLine()
+    appendLine("## Key Files")
+    appendLine()
+    files.filter { it.isKnowledgeFile() || it.isBestPracticeFile() || it.isBuildConfigFile() }
+        .sortedWith(compareBy<AgentFile> { it.path.depth() }.thenBy { it.path })
+        .take(80)
+        .forEach { appendLine("- `${it.path}` (${it.language})") }
+    appendLine()
+    appendLine("## Directory Structure")
+    appendLine()
+    appendLine("```text")
+    directoryTree(files).forEach { appendLine(it) }
+    appendLine("```")
+    appendLine()
+    appendLine("## Claude Code Usage")
+    appendLine()
+    appendLine("- Start with `.ragekhab/repository-map.md` and `.ragekhab/source-index.md`.")
+    appendLine("- Use `.ragekhab/modules/*.md` to choose the smallest set of source files to inspect.")
+    appendLine("- Prefer AGENTS.md, CLAUDE.md, README files, build configs, and docs before source exploration.")
+    appendLine("- Do not assume full source is indexed; use local file reads for exact implementation edits.")
+}
+
+private fun sourceIndex(files: List<AgentFile>): String = buildString {
+    appendLine("# Source Index")
+    appendLine()
+    appendLine("This is a compact map of source files and top-level declarations. It is optimized for routing coding agents to the right files.")
+    files.filter { it.isSourceFile() }
+        .groupBy { it.module }
+        .toSortedMap()
+        .forEach { (module, moduleFiles) ->
+            appendLine()
+            appendLine("## $module")
+            moduleFiles.sortedBy { it.path }.forEach { file ->
+                val declarations = file.declarations().take(12)
+                if (declarations.isEmpty()) {
+                    appendLine("- `${file.path}`")
+                } else {
+                    appendLine("- `${file.path}`: ${declarations.joinToString(", ")}")
+                }
+            }
+        }
+}
+
+private fun moduleSummary(module: String, files: List<AgentFile>): String = buildString {
+    appendLine("# Module: $module")
+    appendLine()
+    appendLine("## Files")
+    files.groupingBy { it.language }.eachCount().toList()
+        .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+        .forEach { (language, count) -> appendLine("- $language: $count") }
+    appendLine()
+    appendLine("## Important Files")
+    files.filter { it.isKnowledgeFile() || it.isBestPracticeFile() || it.isBuildConfigFile() }
+        .sortedBy { it.path }
+        .take(30)
+        .forEach { appendLine("- `${it.path}`") }
+    appendLine()
+    appendLine("## Source Landmarks")
+    files.filter { it.isSourceFile() }
+        .sortedBy { it.path }
+        .take(120)
+        .forEach { file ->
+            val declarations = file.declarations().take(10)
+            if (declarations.isEmpty()) {
+                appendLine("- `${file.path}`")
+            } else {
+                appendLine("- `${file.path}`: ${declarations.joinToString(", ")}")
+            }
+        }
+}
+
+private fun readUtf8(bytes: ByteArray): String? =
+    try {
+        StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString()
+    } catch (_: CharacterCodingException) {
+        null
+    }
+
+private fun List<AgentFile>.chunkByBytes(maxBatchBytes: Int): List<List<AgentFile>> {
+    val batches = mutableListOf<List<AgentFile>>()
+    var current = mutableListOf<AgentFile>()
+    var currentBytes = 0
+    forEach { file ->
+        val fileBytes = file.content.length + file.path.length + 300
+        if (current.isNotEmpty() && currentBytes + fileBytes > maxBatchBytes) {
+            batches += current
+            current = mutableListOf()
+            currentBytes = 0
+        }
+        current += file
+        currentBytes += fileBytes
+    }
+    if (current.isNotEmpty()) batches += current
+    return batches
+}
+
+private fun postSync(client: HttpClient, server: String, payload: String): String {
+    val request = HttpRequest.newBuilder()
+        .uri(URI.create("$server/api/repository-agent/sync"))
+        .header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(payload))
+        .build()
+    val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+    require(response.statusCode() in 200..299) {
+        "Sync failed with HTTP ${response.statusCode()}: ${response.body()}"
+    }
+    return response.body()
+}
+
+private fun syncPayload(
+    repository: String,
+    repositoryRoot: String,
+    full: Boolean,
+    complete: Boolean,
+    allPaths: List<String>,
+    files: List<AgentFile>,
+): String = buildString {
+    append('{')
+    appendJsonField("repository", repository)
+    append(',')
+    appendJsonField("repositoryRoot", repositoryRoot)
+    append(",\"full\":").append(full)
+    append(",\"complete\":").append(complete)
+    append(",\"allPaths\":[")
+    allPaths.forEachIndexed { index, path ->
+        if (index > 0) append(',')
+        appendJsonString(path)
+    }
+    append(']')
+    append(",\"files\":[")
+    files.forEachIndexed { index, file ->
+        if (index > 0) append(',')
+        append('{')
+        appendJsonField("path", file.path)
+        append(',')
+        appendJsonField("module", file.module)
+        append(',')
+        appendJsonField("language", file.language)
+        append(',')
+        appendJsonField("lastModifiedAt", file.lastModifiedAt.toString())
+        append(",\"sizeBytes\":").append(file.sizeBytes)
+        append(',')
+        appendJsonField("contentHash", file.contentHash)
+        append(',')
+        appendJsonField("content", file.content)
+        append('}')
+    }
+    append(']')
+    append('}')
+}
+
+private fun StringBuilder.appendJsonField(name: String, value: String) {
+    appendJsonString(name)
+    append(':')
+    appendJsonString(value)
+}
+
+private fun StringBuilder.appendJsonString(value: String) {
+    append('"')
+    value.forEach { char ->
+        when (char) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            '\b' -> append("\\b")
+            '\u000C' -> append("\\f")
+            '\n' -> append("\\n")
+            '\r' -> append("\\r")
+            '\t' -> append("\\t")
+            else -> if (char.code < 0x20) append("\\u%04x".format(char.code)) else append(char)
+        }
+    }
+    append('"')
+}
+
+private fun String.intField(name: String): Int {
+    val match = Regex("\"$name\"\\s*:\\s*(\\d+)").find(this) ?: return 0
+    return match.groupValues[1].toIntOrNull() ?: 0
+}
+
+private fun String.compact(): String =
+    replace(Regex("\\s+"), " ").take(240)
+
+private fun virtualFile(path: String, content: String): AgentFile {
+    val bytes = content.toByteArray(StandardCharsets.UTF_8)
+    return AgentFile(
+        path = path,
+        module = ".ragekhab",
+        language = "markdown",
+        lastModifiedAt = Instant.now(),
+        sizeBytes = bytes.size.toLong(),
+        contentHash = sha256(bytes),
+        content = content,
+    )
+}
+
+private fun AgentFile.isSourceFile(): Boolean =
+    language in sourceLanguages
+
+private fun AgentFile.isKnowledgeFile(): Boolean {
+    val filename = path.substringAfterLast('/')
+    return isSpecialFile(filename) ||
+        path.startsWith("docs/", ignoreCase = true) && language == "markdown" ||
+        path.endsWith(".md", ignoreCase = true) && path.depth() <= 2
+}
+
+private fun AgentFile.isBestPracticeFile(): Boolean {
+    val normalized = path.lowercase()
+    return listOf(
+        "agent", "claude", "contributing", "convention", "architecture", "decision",
+        "adr", "style", "standard", "guideline", "readme",
+    ).any { it in normalized }
+}
+
+private fun AgentFile.isBuildConfigFile(): Boolean {
+    val filename = path.substringAfterLast('/').lowercase()
+    return filename in buildConfigFiles ||
+        filename.startsWith("dockerfile") ||
+        path.lowercase().startsWith(".github/workflows/")
+}
+
+private fun AgentFile.isLockFile(): Boolean {
+    val filename = path.substringAfterLast('/').lowercase()
+    return filename in setOf("package-lock.json", "pnpm-lock.yaml", "yarn.lock", "gradle.lockfile")
+}
+
+private fun AgentFile.declarations(): List<String> =
+    when (language) {
+        "kotlin" -> content.lines().mapNotNull {
+            Regex("""^\s*(data\s+class|class|object|interface|enum\s+class|fun)\s+([A-Za-z_][A-Za-z0-9_]*)""")
+                .find(it)
+                ?.let { match -> "${match.groupValues[1].replace(Regex("\\s+"), " ")} ${match.groupValues[2]}" }
+        }
+        "java", "csharp", "cpp", "c", "swift", "scala" -> content.lines().mapNotNull {
+            Regex("""^\s*(?:public|private|protected|internal|final|sealed|abstract|static|\s)*\s*(class|interface|enum|record|struct|fun)\s+([A-Za-z_][A-Za-z0-9_]*)""")
+                .find(it)
+                ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
+        }
+        "typescript", "javascript" -> content.lines().mapNotNull {
+            Regex("""^\s*(?:export\s+)?(?:default\s+)?(class|interface|type|function|const|let)\s+([A-Za-z_][A-Za-z0-9_]*)""")
+                .find(it)
+                ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
+        }
+        "python" -> content.lines().mapNotNull {
+            Regex("""^\s*(class|def)\s+([A-Za-z_][A-Za-z0-9_]*)""")
+                .find(it)
+                ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
+        }
+        "go" -> content.lines().mapNotNull {
+            Regex("""^\s*(func|type)\s+([A-Za-z_][A-Za-z0-9_]*)""")
+                .find(it)
+                ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
+        }
+        "rust" -> content.lines().mapNotNull {
+            Regex("""^\s*(?:pub\s+)?(struct|enum|trait|fn|impl)\s+([A-Za-z_][A-Za-z0-9_]*)""")
+                .find(it)
+                ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
+        }
+        else -> emptyList()
+    }.distinct()
+
+private fun inferCommands(files: List<AgentFile>): List<String> {
+    val paths = files.map { it.path }.toSet()
+    val commands = mutableListOf<String>()
+    if ("gradlew" in paths || "gradlew.bat" in paths) {
+        commands += "./gradlew build"
+        commands += "./gradlew test"
+    } else if (paths.any { it.endsWith("build.gradle.kts") || it.endsWith("build.gradle") }) {
+        commands += "gradle build"
+        commands += "gradle test"
+    }
+    if (paths.any { it.endsWith("package.json") }) {
+        commands += "npm install"
+        commands += "npm run build"
+        commands += "npm test"
+    }
+    if (paths.any { it.endsWith("docker-compose.yml") || it.endsWith("compose.yml") }) {
+        commands += "docker compose up --build"
+    }
+    return commands.ifEmpty { listOf("Inspect project build files before running commands.") }
+}
+
+private fun directoryTree(files: List<AgentFile>): List<String> {
+    val entries = sortedSetOf<String>()
+    files.forEach { file ->
+        val parts = file.path.split('/').filter { it.isNotBlank() }
+        parts.take(4).runningFold("") { prefix, part ->
+            if (prefix.isBlank()) part else "$prefix/$part"
+        }.drop(1).forEach(entries::add)
+    }
+    return entries.take(260).map { entry ->
+        val depth = entry.count { it == '/' }
+        "${"  ".repeat(depth)}- ${entry.substringAfterLast('/')}"
+    } + if (entries.size > 260) listOf("... ${entries.size - 260} more") else emptyList()
+}
+
+private fun String.depth(): Int =
+    count { it == '/' }
+
+private fun String.sanitizePathSegment(): String =
+    lowercase().replace(Regex("[^a-z0-9._-]+"), "-").trim('-').ifBlank { "root" }
+
+private fun isIgnored(relative: Path): Boolean {
+    val parts = relative.iterator().asSequence().map { it.toString() }.toSet()
+    return parts.any { it in ignoredDirectories }
+}
+
+private fun isIndexable(path: Path): Boolean {
+    val filename = path.name
+    if (isSpecialFile(filename)) return true
+    if (filename.lowercase() in buildConfigFiles || filename.lowercase().startsWith("dockerfile")) return true
+    val extension = path.extension.lowercase()
+    return extension in sourceExtensions || extension in markdownExtensions
+}
+
+private fun languageFor(path: Path): String {
+    val filename = path.name
+    if (isSpecialFile(filename)) return "markdown"
+    return when (val extension = path.extension.lowercase()) {
+        "kt", "kts" -> "kotlin"
+        "java" -> "java"
+        "js", "jsx" -> "javascript"
+        "ts", "tsx" -> "typescript"
+        "py" -> "python"
+        "go" -> "go"
+        "rs" -> "rust"
+        "rb" -> "ruby"
+        "php" -> "php"
+        "cs" -> "csharp"
+        "cpp", "cc", "cxx", "hpp", "h" -> "cpp"
+        "c" -> "c"
+        "swift" -> "swift"
+        "scala" -> "scala"
+        "sql" -> "sql"
+        "yaml", "yml" -> "yaml"
+        "json" -> "json"
+        "xml" -> "xml"
+        "md", "markdown" -> "markdown"
+        else -> extension.ifBlank { "text" }
+    }
+}
+
+private fun isSpecialFile(filename: String): Boolean =
+    specialFiles.any { it.equals(filename, ignoreCase = true) }
+
+private fun moduleFor(relativePath: String): String {
+    val parts = relativePath.split('/').filter { it.isNotBlank() }
+    return when {
+        parts.isEmpty() -> "root"
+        parts.size == 1 -> "root"
+        parts.first() in moduleDirectories -> parts.first()
+        else -> parts.first()
+    }
+}
+
+private fun sha256(bytes: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    return digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+}
+
+private fun usage(): String =
+    """
+    RAG-e Khab Repository Agent
+
+    Usage:
+      java -jar ragekhab-agent.jar --server http://localhost:8080 --repository my-repo --path .
+
+    Options:
+      --server URL              RAG-e Khab backend URL. Default: RAGEKHAB_URL or http://localhost:8080
+      --repository NAME         Stable repository name. Default: scanned folder name
+      --name NAME               Alias for --repository
+      --path PATH               Repository path to scan. Default: current directory
+      --profile claude|source   claude sends repo map/summaries/key docs. source sends all files. Default: claude
+      --include-source true     Alias for --profile source
+      --full true|false         Send full-sync cleanup marker. Default: true
+      --max-batch-bytes N       Approximate sync batch size. Default: 4000000
+      --max-file-bytes N        Skip files larger than N bytes. Default: 1000000
+      --dry-run                 Show discovered files without sending them
+      --help                    Show this help
+    """.trimIndent()
+
+private val specialFiles = setOf("README.md", "AGENTS.md", "CLAUDE.md")
+private val buildConfigFiles = setOf(
+    "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties",
+    "pom.xml", "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
+    "docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml",
+    "application.yml", "application.yaml", "application.properties", "vite.config.ts", "vite.config.js",
+    "tsconfig.json", "eslint.config.js", ".gitignore", ".dockerignore", "gradlew", "gradlew.bat",
+)
+private val markdownExtensions = setOf("md", "markdown")
+private val sourceExtensions = setOf(
+    "kt", "kts", "java", "js", "jsx", "ts", "tsx", "py", "go", "rs", "rb", "php", "cs",
+    "cpp", "cc", "cxx", "hpp", "h", "c", "swift", "scala", "sql", "yaml", "yml", "json", "xml",
+)
+private val sourceLanguages = setOf(
+    "kotlin", "java", "javascript", "typescript", "python", "go", "rust", "ruby", "php", "csharp",
+    "cpp", "c", "swift", "scala", "sql",
+)
+private val ignoredDirectories = setOf(
+    ".git", ".gradle", ".idea", ".vscode", "build", "dist", "node_modules", "target", "out",
+    ".next", ".nuxt", "coverage", ".cache",
+)
+private val moduleDirectories = setOf("backend", "frontend", "app", "server", "client", "api", "docs", "docker")

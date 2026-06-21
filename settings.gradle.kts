@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "rag-e-khab"
 include("backend")
+include("agent")

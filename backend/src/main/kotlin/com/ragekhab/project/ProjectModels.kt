@@ -15,3 +15,11 @@ data class CreateProjectRequest(
     val name: String,
     val description: String? = null,
 )
+
+data class DeleteProjectResult(
+    val deleted: Boolean,
+    val projectId: UUID,
+    val projectName: String,
+    val deletedDocuments: Int,
+    val deletedRepositoryMetadata: Int,
+)

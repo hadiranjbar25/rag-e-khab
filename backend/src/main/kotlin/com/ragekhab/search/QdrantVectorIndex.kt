@@ -10,7 +10,7 @@ import java.util.UUID
 @Component
 class QdrantVectorIndex(
     private val properties: RagEKhabProperties,
-    private val embedder: TextEmbedder,
+    private val embedder: EmbeddingService,
 ) {
     private val client = RestClient.create(properties.qdrant.url)
 
@@ -73,17 +73,22 @@ class QdrantVectorIndex(
 
     private fun ensureCollection() {
         runCatching {
-            client.get()
+            val response = client.get()
                 .uri("/collections/{collection}", properties.qdrant.collection)
                 .retrieve()
-                .toBodilessEntity()
+                .body(Map::class.java)
+            val existingDimensions = response.vectorSize()
+            val activeDimensions = embedder.dimensions()
+            if (existingDimensions != null && existingDimensions != activeDimensions) {
+                recreateCollection()
+            }
         }.getOrElse { recreateCollection() }
     }
 
     private fun recreateCollection() {
         client.put()
             .uri("/collections/{collection}", properties.qdrant.collection)
-            .body(mapOf("vectors" to mapOf("size" to embedder.dimensions, "distance" to "Cosine")))
+            .body(mapOf("vectors" to mapOf("size" to embedder.dimensions(), "distance" to "Cosine")))
             .retrieve()
             .toBodilessEntity()
     }
@@ -102,4 +107,12 @@ class QdrantVectorIndex(
                 "text" to text,
             ),
         )
+
+    private fun Map<*, *>?.vectorSize(): Int? {
+        val result = this?.get("result") as? Map<*, *> ?: return null
+        val config = result["config"] as? Map<*, *> ?: return null
+        val params = config["params"] as? Map<*, *> ?: return null
+        val vectors = params["vectors"] as? Map<*, *> ?: return null
+        return vectors["size"]?.toString()?.toIntOrNull()
+    }
 }

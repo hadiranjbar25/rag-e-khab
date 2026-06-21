@@ -81,6 +81,7 @@ npm run dev
 - `POST /api/projects` with `{ "name": "...", "description": "..." }`
 - `GET /api/projects`
 - `GET /api/projects/{id}`
+- `DELETE /api/projects/{id}` deletes a non-General project, its documents, vectors, and matching repository metadata
 - `GET /api/documents`, optionally with `?projectId=...`
 - `GET /api/documents/{id}`
 - `DELETE /api/documents/{id}`
@@ -133,22 +134,78 @@ Example memory:
 
 The Repository Agent keeps RAG-e Khab synchronized with a codebase and is intended to become the primary mechanism for keeping the knowledge base current.
 
-Architecture:
+Preferred architecture:
 
 ```text
 Repository
--> Repository Agent
+-> ragekhab-agent.jar
+-> RAG-e Khab /api/repository-agent/sync
 -> Existing Chunker / DocumentRepository / VectorIndex
 -> Qdrant
 ```
 
-The agent discovers repository files, converts them into normal `KnowledgeDocument` entries, chunks them with the existing `Chunker`, and upserts or deletes vectors through the existing `VectorIndex`.
+The recommended agent is a standalone JAR that you run inside each repository. It discovers source files locally and sends a Claude-oriented repository context to RAG-e Khab over HTTP, so the backend does not need Docker access to your host filesystem.
+
+By default, the JAR does not upload every source file. It sends:
+
+- repository structure
+- module summaries
+- source declaration index
+- README, AGENTS.md, CLAUDE.md, and docs
+- build/test/deployment config
+- conventions and best-practice files when present
+
+The backend converts those pushed context artifacts into normal `KnowledgeDocument` entries, chunks them with the existing `Chunker`, and upserts or deletes vectors through the existing `VectorIndex`.
 
 Supported files include source code, Markdown, `README.md`, `AGENTS.md`, and `CLAUDE.md`. Ignored directories include `.git`, `.gradle`, `node_modules`, `build`, `dist`, `target`, `out`, coverage, and common editor/cache folders.
 
 Stored metadata includes repository root, relative file path, module, language, last modified date, size, content hash, indexed date, and deleted status.
 
-Configure the repository path:
+Build the agent JAR:
+
+```bash
+gradle :agent:jar
+```
+
+Run it from any repository:
+
+```bash
+java -jar /path/to/RAGEKHAB/agent/build/libs/ragekhab-agent.jar \
+  --server http://localhost:8080 \
+  --repository billing-api \
+  --path .
+```
+
+Run it for several repositories:
+
+```bash
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository billing-api --path /repos/billing-api
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository admin-ui --path /repos/admin-ui
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository mobile-app --path /repos/mobile-app
+```
+
+Useful options:
+
+```text
+--profile claude|source   claude sends compact repo intelligence. source sends all files. Default: claude
+--include-source true     Alias for --profile source
+--full true|false         Delete files that disappeared from the repo when true. Default: true
+--dry-run                 Show discovered files without sending them
+--max-batch-bytes N       Approximate HTTP sync batch size
+--max-file-bytes N        Skip very large files
+```
+
+Only use full source sync when you intentionally want RAG-e Khab to store the code content:
+
+```bash
+java -jar /path/to/ragekhab-agent.jar \
+  --server http://localhost:8080 \
+  --repository billing-api \
+  --path /repos/billing-api \
+  --profile source
+```
+
+Server-side scanning is still available for mounted paths or local backend development. Configure the repository path:
 
 ```bash
 RAGEKHAB_REPOSITORY_PATH=/path/to/repository
@@ -167,9 +224,42 @@ Manual scan over an explicit path:
 
 ```json
 {
+  "repository": "ragekhab",
   "path": "/path/to/repository",
   "full": false
 }
+```
+
+Each scan or agent sync can target a different repository. `repository` is the stable name agents should use later with `optimize_context`, `recall_memory`, or `repository_status`. If `repository` is omitted for server-side scans, the folder name is used.
+
+Examples:
+
+```bash
+curl -X POST http://localhost:8080/api/repository-agent/scan \
+  -H "Content-Type: application/json" \
+  -d '{"repository":"billing-api","path":"/repos/billing-api","full":true}'
+
+curl -X POST http://localhost:8080/api/repository-agent/scan \
+  -H "Content-Type: application/json" \
+  -d '{"repository":"admin-ui","path":"/repos/admin-ui","full":true}'
+```
+
+The agent JAR sends the equivalent payload to:
+
+```http
+POST /api/repository-agent/sync
+```
+
+Repository status for all repos:
+
+```http
+GET /api/repository-agent/status
+```
+
+Repository status for one repo:
+
+```http
+GET /api/repository-agent/status?repository=billing-api
 ```
 
 `full: true` re-indexes all discovered files. `full: false` performs an incremental scan and indexes only new or changed files while removing deleted files from the vector index.
@@ -212,6 +302,11 @@ ragekhab:
     provider: ollama
     base-url: http://localhost:11434
     model: qwen2.5:7b
+  embedding:
+    provider: hash
+    model: nomic-embed-text
+    base-url: http://host.docker.internal:11434
+    dimensions: 384
 ```
 
 Environment variables:
@@ -223,6 +318,10 @@ RAGEKHAB_LOCAL_LLM_ENABLED=false
 RAGEKHAB_LOCAL_LLM_PROVIDER=ollama
 RAGEKHAB_LOCAL_LLM_BASE_URL=http://localhost:11434
 RAGEKHAB_LOCAL_LLM_MODEL=qwen2.5:7b
+RAGEKHAB_EMBEDDING_PROVIDER=hash
+RAGEKHAB_EMBEDDING_MODEL=nomic-embed-text
+RAGEKHAB_EMBEDDING_BASE_URL=http://host.docker.internal:11434
+RAGEKHAB_EMBEDDING_DIMENSIONS=384
 ```
 
 The same runtime settings are configurable from the Admin panel at `/admin`:
@@ -230,6 +329,7 @@ The same runtime settings are configurable from the Admin panel at `/admin`:
 - Chat provider, model, base URL, and API key
 - Optimizer mode and max token budget
 - Local LLM compression toggle, provider, base URL, and model
+- Embedding provider, model, base URL, and dimensions
 - Repository Agent path, scheduled scan toggle, and scan interval
 
 Panel changes are persisted to `runtime-settings.json` in the configured storage directory and apply to future requests without rebuilding the app.
@@ -382,8 +482,39 @@ RAGEKHAB_LLM_BASE_URL=http://localhost:11434
 RAGEKHAB_LLM_API_KEY=
 ```
 
-Provider implementations are isolated behind `LLMProvider`, so business services use the abstraction only. The current scaffold includes `ollama`, `openai`, `claude`, and `gemini` provider beans; Ollama attempts a local `/api/generate` call, while all providers retain an extractive fallback so the app remains useful without credentials.
+Provider implementations are isolated behind `LLMProvider`, so business services use the abstraction only. LangChain4j is used at the model plumbing boundary for local Ollama chat/compression calls, while RAG-e Khab keeps memory ranking, repository sync, context optimization, token budgeting, and MCP behavior in custom services. The current scaffold includes `ollama`, `openai`, `claude`, and `gemini` provider beans; non-configured remote providers retain an extractive fallback so the app remains useful without credentials.
+
+## Embedding Configuration
+
+RAG-e Khab supports two embedding providers:
+
+- `hash`: the existing provider-free `TextEmbedder`, using a 384-dimensional hash-based bag-of-words vector.
+- `ollama`: calls Ollama's embeddings API with the configured model, defaulting to `nomic-embed-text`.
+
+Default:
+
+```yaml
+ragekhab:
+  embedding:
+    provider: hash
+    model: nomic-embed-text
+    base-url: http://host.docker.internal:11434
+    dimensions: 384
+```
+
+For Ollama:
+
+```bash
+ollama pull nomic-embed-text
+RAGEKHAB_EMBEDDING_PROVIDER=ollama
+RAGEKHAB_EMBEDDING_MODEL=nomic-embed-text
+RAGEKHAB_EMBEDDING_BASE_URL=http://host.docker.internal:11434
+```
+
+Ollama embedding dimensions are detected from the model output. If Ollama is unavailable, indexing and search fail clearly instead of silently mixing vector spaces.
+
+Migration note: Qdrant collections have a fixed vector size. Existing vectors created with the hash provider use 384 dimensions. If you switch to Ollama and the model returns a different dimension, RAG-e Khab recreates the Qdrant collection with the active dimension. Run `POST /api/reindex` or re-sync repositories afterward so documents are embedded with the new provider. The in-memory fallback also ignores vectors created with a different active embedding signature.
 
 ## Notes
 
-The vector index writes to Qdrant when it is available and keeps an in-memory fallback so local development still works if Qdrant is offline. The embedding implementation is deliberately provider-free today; it can be replaced with LangChain4j embedding models without changing REST, MCP, chat, or document services.
+The vector index writes to Qdrant when it is available and keeps an in-memory fallback so local development still works if Qdrant is offline.
