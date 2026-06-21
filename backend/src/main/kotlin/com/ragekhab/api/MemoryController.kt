@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
@@ -32,8 +33,18 @@ class MemoryController(
         memoryService.recall(request)
 
     @GetMapping
-    fun list(): List<AgentMemory> =
-        memoryService.list()
+    fun list(@RequestParam(required = false) projectId: UUID?): List<AgentMemory> =
+        memoryService.list(projectId)
+
+    @PostMapping("/{id}/projects/{projectId}")
+    fun linkToProject(@PathVariable id: UUID, @PathVariable projectId: UUID): AgentMemory =
+        runCatching { memoryService.linkToProject(id, projectId) }
+            .getOrElse { throw ResponseStatusException(HttpStatus.NOT_FOUND, it.message ?: "Memory not found") }
+
+    @DeleteMapping("/{id}/projects/{projectId}")
+    fun unlinkFromProject(@PathVariable id: UUID, @PathVariable projectId: UUID): AgentMemory =
+        runCatching { memoryService.unlinkFromProject(id, projectId) }
+            .getOrElse { throw ResponseStatusException(HttpStatus.NOT_FOUND, it.message ?: "Memory not found") }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

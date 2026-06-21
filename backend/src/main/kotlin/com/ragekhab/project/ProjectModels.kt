@@ -22,4 +22,5 @@ data class DeleteProjectResult(
     val projectName: String,
     val deletedDocuments: Int,
     val deletedRepositoryMetadata: Int,
+    val deletedRepositoryLinks: Int = 0,
 )

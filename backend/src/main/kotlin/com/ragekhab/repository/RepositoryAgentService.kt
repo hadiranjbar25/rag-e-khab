@@ -26,6 +26,7 @@ import kotlin.io.path.name
 class RepositoryAgentService(
     private val settingsService: RuntimeSettingsService,
     private val metadataStore: RepositoryMetadataStore,
+    private val repositoryCatalog: RepositoryCatalogStore,
     private val chunker: Chunker,
     private val documentRepository: DocumentRepository,
     private val vectorIndex: VectorIndex,
@@ -36,7 +37,7 @@ class RepositoryAgentService(
         val repositoryName = request.repository.trim().takeIf { it.isNotBlank() }
             ?: error("Repository name is required.")
         val root = request.repositoryRoot?.trim()?.takeIf { it.isNotBlank() } ?: "agent:$repositoryName"
-        val project = projectService.findOrCreate(repositoryName, "Repository Agent index pushed from agent JAR.")
+        val project = request.projectId?.let { projectService.requireProject(it) } ?: projectService.defaultProject()
         val indexed = mutableListOf<RepositoryFileMetadata>()
         var unchanged = 0
         var skipped = 0
@@ -85,8 +86,17 @@ class RepositoryAgentService(
         } else {
             emptyList()
         }
+        val finishedAt = Instant.now()
+        val repository = repositoryCatalog.upsert(
+            name = repositoryName,
+            path = root,
+            language = primaryLanguage((indexed + metadataStore.activeForRepository(repositoryName, root)).map { it.language }),
+            syncedAt = finishedAt,
+        )
+        repositoryCatalog.link(project.id, repository.id)
 
         return RepositoryScanResult(
+            repositoryId = repository.id,
             repository = repositoryName,
             repositoryRoot = root,
             scannedFiles = if (request.complete && request.allPaths.isNotEmpty()) request.allPaths.size else request.files.size,
@@ -95,7 +105,7 @@ class RepositoryAgentService(
             deletedFiles = deleted.size,
             skippedFiles = skipped,
             startedAt = startedAt,
-            finishedAt = Instant.now(),
+            finishedAt = finishedAt,
             indexed = indexed,
             deleted = deleted,
         )
@@ -105,10 +115,7 @@ class RepositoryAgentService(
         val startedAt = Instant.now()
         val root = resolveRoot(request.path)
         val repositoryName = resolveRepositoryName(request, root)
-        val project = projectService.findOrCreate(
-            repositoryName,
-            "Repository Agent index for ${root.invariantSeparatorsPathString}",
-        )
+        val project = request.projectId?.let { projectService.requireProject(it) } ?: projectService.defaultProject()
         val discovered = discoverFiles(root)
         val discoveredIds = discovered.map { it.documentId }.toSet()
         val indexed = mutableListOf<RepositoryFileMetadata>()
@@ -153,8 +160,17 @@ class RepositoryAgentService(
         val deleted = metadataStore.activeForRoot(root.invariantSeparatorsPathString)
             .filter { it.documentId !in discoveredIds }
             .map(::deleteIndexedFile)
+        val finishedAt = Instant.now()
+        val repository = repositoryCatalog.upsert(
+            name = repositoryName,
+            path = root.invariantSeparatorsPathString,
+            language = primaryLanguage(discovered.map { it.language } + metadataStore.activeForRepository(repositoryName, root.invariantSeparatorsPathString).map { it.language }),
+            syncedAt = finishedAt,
+        )
+        repositoryCatalog.link(project.id, repository.id)
 
         return RepositoryScanResult(
+            repositoryId = repository.id,
             repository = repositoryName,
             repositoryRoot = root.invariantSeparatorsPathString,
             scannedFiles = discovered.size,
@@ -163,7 +179,7 @@ class RepositoryAgentService(
             deletedFiles = deleted.size,
             skippedFiles = skipped,
             startedAt = startedAt,
-            finishedAt = Instant.now(),
+            finishedAt = finishedAt,
             indexed = indexed,
             deleted = deleted,
         )
@@ -176,17 +192,45 @@ class RepositoryAgentService(
                 requestedRepository == null ||
                     effectiveRepositoryName(it).equals(requestedRepository, ignoreCase = true)
             }
-        val repositories = files
-            .groupBy { effectiveRepositoryName(it) to it.repositoryRoot }
-            .map { (key, items) ->
+        backfillRepositoryCatalog(files)
+        val catalogRepositories = repositoryCatalog.list()
+            .filter {
+                requestedRepository == null ||
+                    it.name.equals(requestedRepository, ignoreCase = true)
+            }
+        val repositories = if (repositoryCatalog.hasAny()) {
+            catalogRepositories.map { catalogRepository ->
+                val items = files.filter { effectiveRepositoryName(it).equals(catalogRepository.name, ignoreCase = true) }
                 RepositoryAgentRepositoryStatus(
-                    repository = key.first,
-                    repositoryRoot = key.second,
+                    repositoryId = catalogRepository.id,
+                    repository = catalogRepository.name,
+                    repositoryRoot = catalogRepository.path,
+                    language = catalogRepository.language,
+                    status = catalogRepository.status,
                     trackedFiles = items.count { !it.deleted },
                     deletedFiles = items.count { it.deleted },
-                    lastIndexedAt = items.maxOfOrNull { it.indexedAt },
+                    lastIndexedAt = catalogRepository.lastSyncedAt ?: items.maxOfOrNull { it.indexedAt },
+                    projectIds = repositoryCatalog.linksForRepository(catalogRepository.id).map { it.projectId },
                 )
             }
+        } else {
+            files
+                .groupBy { effectiveRepositoryName(it) to it.repositoryRoot }
+                .map { (key, items) ->
+                    val repositoryId = RepositoryCatalogStore.stableRepositoryId(key.first, key.second)
+                    RepositoryAgentRepositoryStatus(
+                        repositoryId = repositoryId,
+                        repository = key.first,
+                        repositoryRoot = key.second,
+                        language = primaryLanguage(items.map { it.language }),
+                        status = if (items.any { !it.deleted }) "synced" else "deleted",
+                        trackedFiles = items.count { !it.deleted },
+                        deletedFiles = items.count { it.deleted },
+                        lastIndexedAt = items.maxOfOrNull { it.indexedAt },
+                        projectIds = emptyList(),
+                    )
+                }
+        }
             .sortedWith(compareBy<RepositoryAgentRepositoryStatus> { it.repository.lowercase() }.thenBy { it.repositoryRoot })
         return RepositoryAgentStatus(
             configuredPath = settingsService.current().repositoryAgent.path.takeIf { it.isNotBlank() },
@@ -195,6 +239,33 @@ class RepositoryAgentService(
             lastIndexedAt = files.maxOfOrNull { it.indexedAt },
             repositories = repositories,
             files = files,
+        )
+    }
+
+    fun deleteRepository(repositoryId: UUID, deleteKnowledge: Boolean): RepositoryDeleteResult {
+        backfillRepositoryCatalog(metadataStore.list())
+        val repository = repositoryCatalog.get(repositoryId) ?: legacyRepository(repositoryId)
+            ?: error("Repository not found.")
+        val deletedIndexedKnowledge = if (deleteKnowledge) {
+            val metadata = metadataStore.listRepository(repository.name)
+            metadata.forEach {
+                vectorIndex.deleteDocument(it.documentId)
+                documentRepository.delete(it.documentId)
+            }
+            metadataStore.deleteRepository(repository.name)
+        } else {
+            0
+        }
+        if (deleteKnowledge) {
+            repositoryCatalog.deleteRepository(repositoryId)
+        } else {
+            repositoryCatalog.markDeleted(repositoryId)
+        }
+        return RepositoryDeleteResult(
+            deleted = true,
+            repositoryId = repositoryId,
+            repositoryName = repository.name,
+            deletedIndexedKnowledge = deletedIndexedKnowledge,
         )
     }
 
@@ -224,6 +295,53 @@ class RepositoryAgentService(
 
     private fun effectiveRepositoryName(metadata: RepositoryFileMetadata): String =
         metadata.repository.ifBlank { repositoryNameFromRoot(metadata.repositoryRoot) }
+
+    private fun backfillRepositoryCatalog(files: List<RepositoryFileMetadata>) {
+        files
+            .groupBy { effectiveRepositoryName(it) to it.repositoryRoot }
+            .forEach { (key, items) ->
+                val id = RepositoryCatalogStore.stableRepositoryId(key.first, key.second)
+                val existing = repositoryCatalog.get(id)
+                if (existing == null) {
+                    val activeItems = items.filter { !it.deleted }
+                    val repository = repositoryCatalog.upsert(
+                        name = key.first,
+                        path = key.second,
+                        language = primaryLanguage(activeItems.ifEmpty { items }.map { it.language }),
+                        syncedAt = items.maxOfOrNull { it.indexedAt } ?: Instant.now(),
+                        status = if (activeItems.isNotEmpty()) "synced" else "deleted",
+                    )
+                    repositoryCatalog.link(projectService.defaultProject().id, repository.id)
+                } else if (existing.status != "deleted" && repositoryCatalog.linksForRepository(existing.id).isEmpty()) {
+                    repositoryCatalog.link(projectService.defaultProject().id, existing.id)
+                }
+            }
+    }
+
+    private fun legacyRepository(repositoryId: UUID): Repository? =
+        metadataStore.list()
+            .groupBy { effectiveRepositoryName(it) to it.repositoryRoot }
+            .mapNotNull { (key, items) ->
+                val id = RepositoryCatalogStore.stableRepositoryId(key.first, key.second)
+                if (id != repositoryId) return@mapNotNull null
+                repositoryCatalog.upsert(
+                    name = key.first,
+                    path = key.second,
+                    language = primaryLanguage(items.filter { !it.deleted }.ifEmpty { items }.map { it.language }),
+                    syncedAt = items.maxOfOrNull { it.indexedAt } ?: Instant.now(),
+                    status = if (items.any { !it.deleted }) "synced" else "deleted",
+                )
+            }
+            .firstOrNull()
+
+    private fun primaryLanguage(languages: List<String>): String =
+        languages
+            .filter { it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+            ?: "mixed"
 
     private fun normalizeRelativePath(path: String): String =
         path.replace('\\', '/')

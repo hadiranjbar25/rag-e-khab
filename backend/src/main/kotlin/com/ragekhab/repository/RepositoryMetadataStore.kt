@@ -3,13 +3,13 @@ package com.ragekhab.repository
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ragekhab.config.RagEKhabProperties
-import org.springframework.stereotype.Repository
+import org.springframework.stereotype.Repository as SpringRepository
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-@Repository
+@SpringRepository
 class RepositoryMetadataStore(
     private val properties: RagEKhabProperties,
     private val mapper: ObjectMapper,
@@ -41,6 +41,14 @@ class RepositoryMetadataStore(
 
     fun list(): List<RepositoryFileMetadata> =
         files.values.sortedWith(compareBy<RepositoryFileMetadata> { it.repositoryRoot }.thenBy { it.filePath })
+
+    fun listRepository(repository: String): List<RepositoryFileMetadata> {
+        val normalized = repository.trim()
+        if (normalized.isBlank()) return emptyList()
+        return files.values
+            .filter { it.repository.equals(normalized, ignoreCase = true) }
+            .sortedWith(compareBy<RepositoryFileMetadata> { it.repositoryRoot }.thenBy { it.filePath })
+    }
 
     fun deleteRepository(repository: String): Int {
         val normalized = repository.trim()

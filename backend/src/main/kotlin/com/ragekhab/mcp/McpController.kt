@@ -64,6 +64,7 @@ class McpController(
                     confidence = arguments["confidence"]?.toString()?.toDoubleOrNull() ?: 0.85,
                     repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
                     module = arguments["module"]?.toString()?.takeIf { it.isNotBlank() },
+                    projectId = projectId,
                 ),
             )
             "recall_memory" -> memoryService.recall(
@@ -73,9 +74,10 @@ class McpController(
                     repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
                     module = arguments["module"]?.toString()?.takeIf { it.isNotBlank() },
                     type = arguments["type"]?.toString()?.takeIf { it.isNotBlank() }?.let(::parseMemoryType),
+                    projectId = projectId,
                 ),
             )
-            "list_memories" -> mapOf("memories" to memoryService.list())
+            "list_memories" -> mapOf("memories" to memoryService.list(projectId))
             "delete_memory" -> mapOf("deleted" to memoryService.delete(UUID.fromString(arguments["id"]?.toString() ?: error("Missing memory id"))))
             "learn_from_session" -> mapOf("status" to "planned", "message" to "Automatic session memory extraction is reserved for a future release.")
             "scan_repository" -> repositoryAgent.scan(
@@ -84,6 +86,7 @@ class McpController(
                     name = arguments["name"]?.toString()?.takeIf { it.isNotBlank() },
                     path = arguments["path"]?.toString()?.takeIf { it.isNotBlank() },
                     full = arguments["full"]?.toString()?.toBooleanStrictOrNull() ?: false,
+                    projectId = projectId,
                 ),
             )
             "repository_status" -> repositoryAgent.status(arguments["repository"]?.toString()?.takeIf { it.isNotBlank() })
@@ -111,12 +114,12 @@ class McpController(
         tool("list_projects", "List knowledge base projects.", emptyMap()),
         tool("add_text", "Add typed or pasted text to the knowledge base.", mapOf("title" to "string", "text" to "string", "projectId" to "string")),
         tool("search_documents", "Search indexed private documents semantically, optionally within a project.", mapOf("query" to "string", "limit" to "number", "projectId" to "string")),
-        tool("remember", "Store a durable structured memory for future coding-agent sessions.", mapOf("type" to "string", "content" to "string", "confidence" to "number", "repository" to "string", "module" to "string")),
-        tool("recall_memory", "Retrieve relevant long-term memories before working on a coding task.", mapOf("task" to "string", "limit" to "number", "repository" to "string", "module" to "string", "type" to "string")),
-        tool("list_memories", "List stored coding-agent memories.", emptyMap()),
+        tool("remember", "Store a durable structured memory for future coding-agent sessions.", mapOf("type" to "string", "content" to "string", "confidence" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
+        tool("recall_memory", "Retrieve relevant long-term memories before working on a coding task.", mapOf("task" to "string", "limit" to "number", "repository" to "string", "module" to "string", "type" to "string", "projectId" to "string")),
+        tool("list_memories", "List stored coding-agent memories.", mapOf("projectId" to "string")),
         tool("delete_memory", "Delete a stored coding-agent memory.", mapOf("id" to "string")),
         tool("learn_from_session", "Future tool: extract durable memories from completed coding work.", mapOf("session" to "string")),
-        tool("scan_repository", "Scan and synchronize a named repository into the knowledge base.", mapOf("repository" to "string", "name" to "string", "path" to "string", "full" to "boolean")),
+        tool("scan_repository", "Scan and synchronize a named repository into the knowledge base.", mapOf("repository" to "string", "name" to "string", "path" to "string", "full" to "boolean", "projectId" to "string")),
         tool("repository_status", "Return repository-agent synchronization metadata.", mapOf("repository" to "string")),
         tool("optimize_context", "Return the smallest Claude Code context needed to complete a coding task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
         tool("ask_knowledge_base", "Ask a question and receive an answer with sources, optionally within a project.", mapOf("question" to "string", "limit" to "number", "projectId" to "string")),

@@ -1,5 +1,6 @@
 package com.ragekhab.memory
 
+import com.ragekhab.project.ProjectRepository
 import java.time.Instant
 import java.util.UUID
 
@@ -23,6 +24,7 @@ data class AgentMemory(
     val lastAccessedAt: Instant? = null,
     val repository: String? = null,
     val module: String? = null,
+    val projectIds: List<UUID> = listOf(ProjectRepository.DEFAULT_PROJECT_ID),
 )
 
 data class RememberRequest(
@@ -31,6 +33,7 @@ data class RememberRequest(
     val confidence: Double = 0.85,
     val repository: String? = null,
     val module: String? = null,
+    val projectId: UUID? = null,
 )
 
 data class RecallMemoryRequest(
@@ -39,6 +42,7 @@ data class RecallMemoryRequest(
     val repository: String? = null,
     val module: String? = null,
     val type: MemoryType? = null,
+    val projectId: UUID? = null,
 )
 
 data class RelevantMemory(
@@ -52,6 +56,7 @@ data class RelevantMemory(
     val lastAccessedAt: Instant?,
     val repository: String? = null,
     val module: String? = null,
+    val projectIds: List<UUID> = listOf(ProjectRepository.DEFAULT_PROJECT_ID),
 )
 
 data class RecallMemoryResponse(
