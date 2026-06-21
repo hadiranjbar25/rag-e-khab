@@ -1,8 +1,10 @@
 .gradle/
 build/
 backend/build/
+agent/build/
 data/
 node_modules/
 frontend/dist/
+frontend/tsconfig.tsbuildinfo
 .DS_Store
 *.log

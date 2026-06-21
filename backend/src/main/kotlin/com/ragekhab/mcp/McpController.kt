@@ -80,11 +80,13 @@ class McpController(
             "learn_from_session" -> mapOf("status" to "planned", "message" to "Automatic session memory extraction is reserved for a future release.")
             "scan_repository" -> repositoryAgent.scan(
                 RepositoryScanRequest(
+                    repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
+                    name = arguments["name"]?.toString()?.takeIf { it.isNotBlank() },
                     path = arguments["path"]?.toString()?.takeIf { it.isNotBlank() },
                     full = arguments["full"]?.toString()?.toBooleanStrictOrNull() ?: false,
                 ),
             )
-            "repository_status" -> repositoryAgent.status()
+            "repository_status" -> repositoryAgent.status(arguments["repository"]?.toString()?.takeIf { it.isNotBlank() })
             "optimize_context" -> optimizerService.optimize(
                 ContextOptimizationRequest(
                     task = arguments["task"]?.toString() ?: error("Missing task"),
@@ -114,8 +116,8 @@ class McpController(
         tool("list_memories", "List stored coding-agent memories.", emptyMap()),
         tool("delete_memory", "Delete a stored coding-agent memory.", mapOf("id" to "string")),
         tool("learn_from_session", "Future tool: extract durable memories from completed coding work.", mapOf("session" to "string")),
-        tool("scan_repository", "Scan and synchronize a repository into the knowledge base.", mapOf("path" to "string", "full" to "boolean")),
-        tool("repository_status", "Return repository-agent synchronization metadata.", emptyMap()),
+        tool("scan_repository", "Scan and synchronize a named repository into the knowledge base.", mapOf("repository" to "string", "name" to "string", "path" to "string", "full" to "boolean")),
+        tool("repository_status", "Return repository-agent synchronization metadata.", mapOf("repository" to "string")),
         tool("optimize_context", "Return the smallest Claude Code context needed to complete a coding task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
         tool("ask_knowledge_base", "Ask a question and receive an answer with sources, optionally within a project.", mapOf("question" to "string", "limit" to "number", "projectId" to "string")),
         tool("list_documents", "List uploaded documents, optionally within a project.", mapOf("projectId" to "string")),

@@ -2,6 +2,7 @@ package com.ragekhab.context
 
 import com.ragekhab.config.RagEKhabProperties
 import com.ragekhab.config.RuntimeSettingsService
+import com.ragekhab.llm.LangChain4jChatClient
 import com.ragekhab.search.SearchResult
 import com.fasterxml.jackson.databind.ObjectMapper
 import kotlin.test.Test
@@ -56,6 +57,7 @@ class ContextOptimizerServiceTest {
                 ObjectMapper(),
             ),
             mapper = ObjectMapper(),
+            chatClient = LangChain4jChatClient(),
         )
 
         val result = compression.compress("Fix auth", listOf(searchResult()), 1_000)

@@ -31,10 +31,84 @@ class RepositoryAgentService(
     private val vectorIndex: VectorIndex,
     private val projectService: ProjectService,
 ) {
+    fun sync(request: RepositorySyncRequest): RepositoryScanResult {
+        val startedAt = Instant.now()
+        val repositoryName = request.repository.trim().takeIf { it.isNotBlank() }
+            ?: error("Repository name is required.")
+        val root = request.repositoryRoot?.trim()?.takeIf { it.isNotBlank() } ?: "agent:$repositoryName"
+        val project = projectService.findOrCreate(repositoryName, "Repository Agent index pushed from agent JAR.")
+        val indexed = mutableListOf<RepositoryFileMetadata>()
+        var unchanged = 0
+        var skipped = 0
+
+        request.files.forEach { file ->
+            val relativePath = normalizeRelativePath(file.path)
+            if (relativePath.isBlank() || file.content.isBlank()) {
+                skipped += 1
+                return@forEach
+            }
+            val documentId = stableDocumentId(repositoryName, relativePath)
+            val previous = metadataStore.get(documentId)
+            if (previous != null && !previous.deleted && previous.contentHash == file.contentHash) {
+                unchanged += 1
+                return@forEach
+            }
+
+            val language = file.language?.takeIf { it.isNotBlank() } ?: languageFor(Path.of(relativePath))
+            val metadata = indexText(
+                repositoryName = repositoryName,
+                repositoryRoot = root,
+                relativePath = relativePath,
+                documentId = documentId,
+                module = file.module?.takeIf { it.isNotBlank() } ?: moduleFor(relativePath),
+                language = language,
+                contentType = if (language == "markdown") "text/markdown" else "text/plain",
+                lastModifiedAt = file.lastModifiedAt,
+                sizeBytes = file.sizeBytes,
+                contentHash = file.contentHash,
+                text = file.content,
+                projectId = project.id,
+                projectName = project.name,
+            )
+            if (metadata == null) {
+                skipped += 1
+            } else {
+                indexed += metadata
+            }
+        }
+
+        val deleted = if (request.full && request.complete) {
+            val activePaths = request.allPaths.map(::normalizeRelativePath).toSet()
+            metadataStore.activeForRepository(repositoryName, root)
+                .filter { it.filePath !in activePaths }
+                .map { deleteIndexedFile(it) }
+        } else {
+            emptyList()
+        }
+
+        return RepositoryScanResult(
+            repository = repositoryName,
+            repositoryRoot = root,
+            scannedFiles = if (request.complete && request.allPaths.isNotEmpty()) request.allPaths.size else request.files.size,
+            indexedFiles = indexed.size,
+            unchangedFiles = unchanged,
+            deletedFiles = deleted.size,
+            skippedFiles = skipped,
+            startedAt = startedAt,
+            finishedAt = Instant.now(),
+            indexed = indexed,
+            deleted = deleted,
+        )
+    }
+
     fun scan(request: RepositoryScanRequest = RepositoryScanRequest()): RepositoryScanResult {
         val startedAt = Instant.now()
         val root = resolveRoot(request.path)
-        val project = projectService.defaultProject()
+        val repositoryName = resolveRepositoryName(request, root)
+        val project = projectService.findOrCreate(
+            repositoryName,
+            "Repository Agent index for ${root.invariantSeparatorsPathString}",
+        )
         val discovered = discoverFiles(root)
         val discoveredIds = discovered.map { it.documentId }.toSet()
         val indexed = mutableListOf<RepositoryFileMetadata>()
@@ -54,58 +128,34 @@ class RepositoryAgentService(
                 return@forEach
             }
 
-            val displayName = candidate.relativePath
-            val chunks = chunker.chunk(
-                project.id,
-                project.name,
-                candidate.documentId,
-                displayName,
-                listOf(ParsedPage(null, text)),
-            )
-            if (chunks.isEmpty()) {
-                skipped += 1
-                return@forEach
-            }
-
-            vectorIndex.deleteDocument(candidate.documentId)
-            val document = KnowledgeDocument(
-                id = candidate.documentId,
-                projectId = project.id,
-                projectName = project.name,
-                name = displayName,
-                format = if (candidate.language == "markdown") DocumentFormat.MARKDOWN else DocumentFormat.TEXT,
-                contentType = candidate.contentType,
-                sizeBytes = candidate.sizeBytes,
-                createdAt = Instant.now(),
-                chunkCount = chunks.size,
-            )
-            documentRepository.save(document, chunks)
-            vectorIndex.upsert(chunks)
-
-            val metadata = RepositoryFileMetadata(
-                documentId = candidate.documentId,
+            val metadata = indexText(
+                repositoryName = repositoryName,
                 repositoryRoot = root.invariantSeparatorsPathString,
-                filePath = candidate.relativePath,
+                relativePath = candidate.relativePath,
+                documentId = candidate.documentId,
                 module = candidate.module,
                 language = candidate.language,
+                contentType = candidate.contentType,
                 lastModifiedAt = candidate.lastModifiedAt,
                 sizeBytes = candidate.sizeBytes,
                 contentHash = candidate.contentHash,
-                indexedAt = Instant.now(),
+                text = text,
+                projectId = project.id,
+                projectName = project.name,
             )
-            metadataStore.save(metadata)
+            if (metadata == null) {
+                skipped += 1
+                return@forEach
+            }
             indexed += metadata
         }
 
         val deleted = metadataStore.activeForRoot(root.invariantSeparatorsPathString)
             .filter { it.documentId !in discoveredIds }
-            .map { metadata ->
-                vectorIndex.deleteDocument(metadata.documentId)
-                documentRepository.delete(metadata.documentId)
-                metadataStore.save(metadata.copy(deleted = true, indexedAt = Instant.now()))
-            }
+            .map(::deleteIndexedFile)
 
         return RepositoryScanResult(
+            repository = repositoryName,
             repositoryRoot = root.invariantSeparatorsPathString,
             scannedFiles = discovered.size,
             indexedFiles = indexed.size,
@@ -119,13 +169,31 @@ class RepositoryAgentService(
         )
     }
 
-    fun status(): RepositoryAgentStatus {
+    fun status(repository: String? = null): RepositoryAgentStatus {
+        val requestedRepository = repository?.trim()?.takeIf { it.isNotBlank() }
         val files = metadataStore.list()
+            .filter {
+                requestedRepository == null ||
+                    effectiveRepositoryName(it).equals(requestedRepository, ignoreCase = true)
+            }
+        val repositories = files
+            .groupBy { effectiveRepositoryName(it) to it.repositoryRoot }
+            .map { (key, items) ->
+                RepositoryAgentRepositoryStatus(
+                    repository = key.first,
+                    repositoryRoot = key.second,
+                    trackedFiles = items.count { !it.deleted },
+                    deletedFiles = items.count { it.deleted },
+                    lastIndexedAt = items.maxOfOrNull { it.indexedAt },
+                )
+            }
+            .sortedWith(compareBy<RepositoryAgentRepositoryStatus> { it.repository.lowercase() }.thenBy { it.repositoryRoot })
         return RepositoryAgentStatus(
             configuredPath = settingsService.current().repositoryAgent.path.takeIf { it.isNotBlank() },
             trackedFiles = files.count { !it.deleted },
             deletedFiles = files.count { it.deleted },
             lastIndexedAt = files.maxOfOrNull { it.indexedAt },
+            repositories = repositories,
             files = files,
         )
     }
@@ -144,6 +212,84 @@ class RepositoryAgentService(
         val root = Path.of(configured).toAbsolutePath().normalize()
         require(Files.isDirectory(root)) { "Repository path does not exist or is not a directory: $root" }
         return root
+    }
+
+    private fun resolveRepositoryName(request: RepositoryScanRequest, root: Path): String =
+        listOf(request.repository, request.name)
+            .firstNotNullOfOrNull { it?.trim()?.takeIf(String::isNotBlank) }
+            ?: repositoryNameFromRoot(root.invariantSeparatorsPathString)
+
+    private fun repositoryNameFromRoot(root: String): String =
+        Path.of(root).fileName?.toString()?.takeIf { it.isNotBlank() } ?: "repository"
+
+    private fun effectiveRepositoryName(metadata: RepositoryFileMetadata): String =
+        metadata.repository.ifBlank { repositoryNameFromRoot(metadata.repositoryRoot) }
+
+    private fun normalizeRelativePath(path: String): String =
+        path.replace('\\', '/')
+            .trim()
+            .removePrefix("./")
+            .trim('/')
+
+    private fun indexText(
+        repositoryName: String,
+        repositoryRoot: String,
+        relativePath: String,
+        documentId: UUID,
+        module: String,
+        language: String,
+        contentType: String,
+        lastModifiedAt: Instant,
+        sizeBytes: Long,
+        contentHash: String,
+        text: String,
+        projectId: UUID,
+        projectName: String,
+    ): RepositoryFileMetadata? {
+        val displayName = "$repositoryName/$relativePath"
+        val chunks = chunker.chunk(
+            projectId,
+            projectName,
+            documentId,
+            displayName,
+            listOf(ParsedPage(null, text)),
+        )
+        if (chunks.isEmpty()) return null
+
+        vectorIndex.deleteDocument(documentId)
+        val document = KnowledgeDocument(
+            id = documentId,
+            projectId = projectId,
+            projectName = projectName,
+            name = displayName,
+            format = if (language == "markdown") DocumentFormat.MARKDOWN else DocumentFormat.TEXT,
+            contentType = contentType,
+            sizeBytes = sizeBytes,
+            createdAt = Instant.now(),
+            chunkCount = chunks.size,
+        )
+        documentRepository.save(document, chunks)
+        vectorIndex.upsert(chunks)
+
+        val metadata = RepositoryFileMetadata(
+            documentId = documentId,
+            repository = repositoryName,
+            repositoryRoot = repositoryRoot,
+            filePath = relativePath,
+            module = module,
+            language = language,
+            lastModifiedAt = lastModifiedAt,
+            sizeBytes = sizeBytes,
+            contentHash = contentHash,
+            indexedAt = Instant.now(),
+        )
+        return metadataStore.save(metadata)
+    }
+
+    private fun deleteIndexedFile(metadata: RepositoryFileMetadata): RepositoryFileMetadata {
+        vectorIndex.deleteDocument(metadata.documentId)
+        documentRepository.delete(metadata.documentId)
+        return metadataStore.save(metadata.copy(deleted = true, indexedAt = Instant.now()))
     }
 
     private fun discoverFiles(root: Path): List<FileCandidate> =
@@ -236,6 +382,9 @@ class RepositoryAgentService(
 
     private fun stableDocumentId(root: Path, relativePath: String): UUID =
         UUID.nameUUIDFromBytes("${root.invariantSeparatorsPathString}:$relativePath".toByteArray(StandardCharsets.UTF_8))
+
+    private fun stableDocumentId(repository: String, relativePath: String): UUID =
+        UUID.nameUUIDFromBytes("$repository:$relativePath".toByteArray(StandardCharsets.UTF_8))
 
     private fun sha256(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)

@@ -3,29 +3,19 @@ package com.ragekhab.context
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ragekhab.config.RagEKhabProperties
 import com.ragekhab.config.RuntimeSettingsService
+import com.ragekhab.llm.LangChain4jChatClient
 import com.ragekhab.search.SearchResult
-import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Service
-import org.springframework.web.client.RestClient
-import java.time.Duration
 
 @Service
 class ContextCompressionService(
     private val properties: RagEKhabProperties,
     private val settingsService: RuntimeSettingsService,
     private val mapper: ObjectMapper,
+    private val chatClient: LangChain4jChatClient,
 ) {
     val providerName: String
         get() = settingsService.current().localLlm.provider
-
-    private val client = RestClient.builder()
-        .requestFactory(
-            SimpleClientHttpRequestFactory().apply {
-                setConnectTimeout(Duration.ofMillis(700))
-                setReadTimeout(Duration.ofSeconds(8))
-            },
-        )
-        .build()
 
     fun compress(task: String, chunks: List<SearchResult>, maxTokens: Int): CompressedContext? {
         val settings = settingsService.current().localLlm
@@ -56,12 +46,7 @@ class ContextCompressionService(
         """.trimIndent()
 
         return runCatching {
-            val response = client.post()
-                .uri("${settings.baseUrl}/api/generate")
-                .body(mapOf("model" to settings.model, "prompt" to prompt, "stream" to false))
-                .retrieve()
-                .body(Map::class.java)
-            val text = response?.get("response")?.toString()?.trim().orEmpty()
+            val text = chatClient.ollama(settings.baseUrl, settings.model, prompt).trim()
             parse(text)
         }.getOrNull()
     }

@@ -3,11 +3,9 @@ package com.ragekhab.llm
 import com.ragekhab.config.RagEKhabProperties
 import com.ragekhab.config.RuntimeSettingsService
 import org.springframework.stereotype.Component
-import org.springframework.web.client.RestClient
 
-abstract class ConfiguredHttpProvider(
+abstract class PromptingLLMProvider(
     protected val properties: RagEKhabProperties,
-    protected val client: RestClient = RestClient.create(),
 ) : LLMProvider {
     protected fun prompt(request: LLMRequest): String {
         val context = request.context.joinToString("\n\n") {
@@ -35,37 +33,35 @@ abstract class ConfiguredHttpProvider(
 class OllamaProvider(
     properties: RagEKhabProperties,
     private val settingsService: RuntimeSettingsService,
-) : ConfiguredHttpProvider(properties) {
+    private val chatClient: LangChain4jChatClient,
+) : PromptingLLMProvider(properties) {
     override val name = "ollama"
 
     override fun answer(request: LLMRequest): String =
         runCatching {
             val settings = settingsService.current().llm
-            val response = client.post()
-                .uri("${settings.baseUrl}/api/generate")
-                .body(mapOf("model" to settings.model, "prompt" to prompt(request), "stream" to false))
-                .retrieve()
-                .body(Map::class.java)
-            response?.get("response")?.toString()?.takeIf { it.isNotBlank() } ?: fallback(request)
+            chatClient.ollama(settings.baseUrl, settings.model, prompt(request))
+                .takeIf { it.isNotBlank() }
+                ?: fallback(request)
         }.getOrElse { fallback(request) }
 }
 
 @Component
-class OpenAIProvider(properties: RagEKhabProperties) : ConfiguredHttpProvider(properties) {
+class OpenAIProvider(properties: RagEKhabProperties) : PromptingLLMProvider(properties) {
     override val name = "openai"
 
     override fun answer(request: LLMRequest): String = fallback(request)
 }
 
 @Component
-class ClaudeProvider(properties: RagEKhabProperties) : ConfiguredHttpProvider(properties) {
+class ClaudeProvider(properties: RagEKhabProperties) : PromptingLLMProvider(properties) {
     override val name = "claude"
 
     override fun answer(request: LLMRequest): String = fallback(request)
 }
 
 @Component
-class GeminiProvider(properties: RagEKhabProperties) : ConfiguredHttpProvider(properties) {
+class GeminiProvider(properties: RagEKhabProperties) : PromptingLLMProvider(properties) {
     override val name = "gemini"
 
     override fun answer(request: LLMRequest): String = fallback(request)

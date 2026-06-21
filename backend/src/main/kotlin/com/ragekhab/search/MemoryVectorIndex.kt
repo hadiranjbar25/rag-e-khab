@@ -6,17 +6,20 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 @Component
-class MemoryVectorIndex(private val embedder: TextEmbedder) : VectorIndex {
+class MemoryVectorIndex(private val embedder: EmbeddingService) : VectorIndex {
     private val indexed = ConcurrentHashMap<String, IndexedChunk>()
 
     override fun upsert(chunks: List<DocumentChunk>) {
-        chunks.forEach { chunk -> indexed[chunk.id] = IndexedChunk(chunk, embedder.embed(chunk.text)) }
+        val signature = embedder.signature()
+        chunks.forEach { chunk -> indexed[chunk.id] = IndexedChunk(chunk, embedder.embed(chunk.text), signature) }
     }
 
     override fun search(query: String, limit: Int, projectId: UUID?): List<SearchResult> {
         val vector = embedder.embed(query)
+        val signature = embedder.signature()
         return indexed.values
             .asSequence()
+            .filter { it.embeddingSignature == signature }
             .filter { projectId == null || it.chunk.projectId == projectId }
             .map { it.chunk.toResult(embedder.cosine(vector, it.vector)) }
             .filter { it.score > 0.0 }
@@ -36,5 +39,9 @@ class MemoryVectorIndex(private val embedder: TextEmbedder) : VectorIndex {
 
     override fun status(): String = "memory"
 
-    private data class IndexedChunk(val chunk: DocumentChunk, val vector: List<Float>)
+    private data class IndexedChunk(
+        val chunk: DocumentChunk,
+        val vector: List<Float>,
+        val embeddingSignature: String,
+    )
 }

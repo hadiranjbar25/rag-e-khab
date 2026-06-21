@@ -30,6 +30,11 @@ ragekhab:
     provider: ${RAGEKHAB_LOCAL_LLM_PROVIDER:ollama}
     base-url: ${RAGEKHAB_LOCAL_LLM_BASE_URL:http://localhost:11434}
     model: ${RAGEKHAB_LOCAL_LLM_MODEL:qwen2.5:7b}
+  embedding:
+    provider: ${RAGEKHAB_EMBEDDING_PROVIDER:hash}
+    model: ${RAGEKHAB_EMBEDDING_MODEL:nomic-embed-text}
+    base-url: ${RAGEKHAB_EMBEDDING_BASE_URL:http://host.docker.internal:11434}
+    dimensions: ${RAGEKHAB_EMBEDDING_DIMENSIONS:384}
   qdrant:
     url: ${QDRANT_URL:http://localhost:6333}
     collection: ${QDRANT_COLLECTION:ragekhab_documents}
