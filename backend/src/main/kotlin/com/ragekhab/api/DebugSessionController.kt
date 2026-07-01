@@ -9,9 +9,11 @@ import com.ragekhab.debug.DebugSession
 import com.ragekhab.debug.DebugSessionDetail
 import com.ragekhab.debug.DebugSessionService
 import com.ragekhab.debug.DebugTokenMapping
+import com.ragekhab.debug.PromoteDebugMemoryRequest
 import com.ragekhab.debug.RecordClaudeRequest
 import com.ragekhab.debug.SanitizeDebugRequest
 import com.ragekhab.debug.SanitizeDebugResponse
+import com.ragekhab.memory.AgentMemory
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -69,6 +71,10 @@ class DebugSessionController(
     @PostMapping("/{sessionId}/data-requests/{requestId}/reject")
     fun rejectDataRequest(@PathVariable sessionId: UUID, @PathVariable requestId: UUID): DebugDataRequest =
         debugSessions.rejectDataRequest(sessionId, requestId)
+
+    @PostMapping("/{sessionId}/promote-memory")
+    fun promoteMemory(@PathVariable sessionId: UUID, @RequestBody request: PromoteDebugMemoryRequest): AgentMemory =
+        debugSessions.promoteMemory(sessionId, request)
 
     @PostMapping("/{sessionId}/exports")
     fun auditExport(@PathVariable sessionId: UUID, @RequestBody(required = false) request: DebugExportRequest?): Map<String, Boolean> {

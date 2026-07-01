@@ -448,6 +448,11 @@ export default function App() {
   const [memoryContentDraft, setMemoryContentDraft] = useState('');
   const [memoryRepositoryDraft, setMemoryRepositoryDraft] = useState('');
   const [memoryToLink, setMemoryToLink] = useState('');
+  const [debugMemoryTypeDraft, setDebugMemoryTypeDraft] = useState('BugFix');
+  const [debugMemoryContentDraft, setDebugMemoryContentDraft] = useState('');
+  const [debugMemoryRepositoryDraft, setDebugMemoryRepositoryDraft] = useState('');
+  const [debugMemoryModuleDraft, setDebugMemoryModuleDraft] = useState('');
+  const [debugMemoryConfidenceDraft, setDebugMemoryConfidenceDraft] = useState(0.9);
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<RuntimeSettings | null>(null);
   const [question, setQuestion] = useState('');
@@ -1066,6 +1071,36 @@ export default function App() {
     }
   };
 
+  const promoteDebugMemory = async () => {
+    if (!activeDebugSessionId || !debugMemoryContentDraft.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const memory = await request<MemoryItem>(`/api/debug-sessions/${activeDebugSessionId}/promote-memory`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: debugMemoryTypeDraft,
+          content: debugMemoryContentDraft,
+          confidence: debugMemoryConfidenceDraft,
+          repository: debugMemoryRepositoryDraft.trim() || undefined,
+          module: debugMemoryModuleDraft.trim() || undefined,
+          projectId: selectedProjectId || undefined
+        })
+      });
+      setDebugMemoryContentDraft('');
+      setDebugMemoryRepositoryDraft('');
+      setDebugMemoryModuleDraft('');
+      setDebugDetail(await request<DebugSessionDetail>(`/api/debug-sessions/${activeDebugSessionId}`));
+      await refresh();
+      showToast({ type: 'success', title: 'Lesson promoted to memory', message: memory.type });
+    } catch (err) {
+      reportError(err, 'Memory promotion failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const updateDebugDataRequest = async (requestId: string, action: 'complete' | 'reject') => {
     if (!activeDebugSessionId) return;
     setBusy(true);
@@ -1655,6 +1690,26 @@ export default function App() {
                           <div key={note.id}><strong>{note.request}</strong><span>{new Date(note.createdAt).toLocaleString()}</span></div>
                         ))}
                       </div>
+                    </div>
+                  </section>
+
+                  <section className="debugPanel promoteMemoryPanel">
+                    <div className="surfaceHeader">
+                      <div>
+                        <h2>Promote Lesson to Memory</h2>
+                        <span>Save only durable, sanitized conclusions. Tokens, raw IDs, PII, and SQL with real IDs are blocked.</span>
+                      </div>
+                      <Brain size={18} />
+                    </div>
+                    <div className="promoteMemoryGrid">
+                      <select value={debugMemoryTypeDraft} onChange={(event) => setDebugMemoryTypeDraft(event.target.value)}>
+                        {memoryTypes.map((type) => <option value={type} key={type}>{memoryLabels[type] ?? type}</option>)}
+                      </select>
+                      <input value={debugMemoryRepositoryDraft} onChange={(event) => setDebugMemoryRepositoryDraft(event.target.value)} placeholder="repository optional" />
+                      <input value={debugMemoryModuleDraft} onChange={(event) => setDebugMemoryModuleDraft(event.target.value)} placeholder="module optional" />
+                      <input type="number" min="0" max="1" step="0.05" value={debugMemoryConfidenceDraft} onChange={(event) => setDebugMemoryConfidenceDraft(Number(event.target.value))} />
+                      <textarea value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." />
+                      <button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim()}><Brain size={18} /><span>Promote</span></button>
                     </div>
                   </section>
 

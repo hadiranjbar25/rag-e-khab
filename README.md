@@ -58,6 +58,7 @@ flowchart TD
 - Safe Debug Sessions for sanitizing CSV, JSON, and logs before sharing production-like debugging data with Claude.
 - Deterministic debug token mappings such as `USER_001`, `ORDER_001`, `EMAIL_001`, and `PHONE_001` scoped to a session.
 - Structured Claude debug data requests through MCP, shown in the UI as developer tasks with private token resolution and suggested SQL.
+- Human-approved promotion from Safe Debug Sessions into long-term Memory for sanitized lessons learned.
 - Local-first JSON persistence for memories, runtime settings, repository catalog data, and Safe Debug Sessions.
 
 ## Run
@@ -129,6 +130,7 @@ The frontend has been moved out of the old single-file entrypoint shape. `App.ts
 - `POST /api/debug-sessions/{sessionId}/data-requests`
 - `POST /api/debug-sessions/{sessionId}/data-requests/{requestId}/complete`
 - `POST /api/debug-sessions/{sessionId}/data-requests/{requestId}/reject`
+- `POST /api/debug-sessions/{sessionId}/promote-memory`
 - `POST /api/debug-sessions/{sessionId}/exports`
 
 ## Safe Debug Sessions
@@ -153,6 +155,30 @@ Typical workflow:
 4. Claude calls `create_debug_data_request` when it needs follow-up data.
 5. The developer sees the pending request, copies privately generated SQL, queries manually, pastes the result, and links the new artifact to the request.
 6. The request is marked completed or rejected.
+7. When the bug is understood, the developer promotes a sanitized durable lesson to Memory.
+
+### Debug Session to Memory
+
+Safe Debug and Memory are connected by an explicit review step, not automatic sync.
+
+- Safe Debug is the private investigation workspace.
+- Memory is the long-term sanitized lesson store.
+- Use **Promote Lesson to Memory** from the Safe Debug UI when the investigation produces a reusable project lesson.
+- Promotion calls `POST /api/debug-sessions/{sessionId}/promote-memory` and then stores the approved lesson through the normal Memory service.
+- Promotion is blocked if the content appears to contain debug tokens, emails, phone numbers, payment-card-like values, IBAN-like values, or SQL with likely real identifiers.
+- Token mappings, raw artifacts, real IDs, private SQL, names, emails, phone numbers, and addresses should stay in the debug session and should not become memory.
+
+Good memory:
+
+```text
+Payment retries can fail when an order is archived before the payment attempt reaches terminal status.
+```
+
+Bad memory:
+
+```text
+USER_001 maps to users.id = 2 and failed because SELECT * FROM orders WHERE user_id = 2 returned archived orders.
+```
 
 ## Persistent Memory
 
@@ -392,6 +418,8 @@ The same runtime settings are configurable from the Admin panel at `/admin`:
 Panel changes are persisted to `runtime-settings.json` in the configured storage directory and apply to future requests without rebuilding the app.
 
 ## MCP Tools
+
+For recommended agent configuration, MCP connection examples, and copy-pasteable agent instructions, see [`AGENTS.md`](AGENTS.md).
 
 The MCP JSON-RPC endpoint supports:
 
