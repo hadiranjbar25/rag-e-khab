@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createRoot } from 'react-dom/client';
 import {
   AlertCircle,
   Archive,
@@ -28,7 +27,6 @@ import {
   X,
   Zap
 } from 'lucide-react';
-import './styles.css';
 
 type ProjectItem = {
   id: string;
@@ -414,7 +412,7 @@ function sqlLiteral(value: string): string {
   return /^-?\d+(\.\d+)?$/.test(value) ? value : `'${value.replaceAll("'", "''")}'`;
 }
 
-function App() {
+export default function App() {
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname));
   const [ingestMode, setIngestMode] = useState<IngestMode>('text');
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -2174,5 +2172,3 @@ function App() {
     </main>
   );
 }
-
-createRoot(document.getElementById('root')!).render(<App />);
