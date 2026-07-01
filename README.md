@@ -470,7 +470,7 @@ For recommended agent configuration, MCP connection examples, and copy-pasteable
 RAG-e Khab exposes JSON-RPC MCP over HTTP:
 
 ```text
-http://localhost:8060/mcp
+http://localhost:5173/mcp
 ```
 
 Agents that support HTTP MCP can use:
@@ -480,12 +480,13 @@ Agents that support HTTP MCP can use:
   "mcpServers": {
     "rag-e-khab": {
       "type": "http",
-      "url": "http://localhost:8060/mcp"
+      "url": "http://localhost:5173/mcp"
     }
   }
 }
 ```
 
+When connecting directly to the backend instead of the UI proxy, use `http://localhost:8060/mcp`.
 Agents that only support stdio MCP need an HTTP-to-stdio MCP bridge or proxy, because RAG-e Khab serves MCP at `/mcp`.
 
 Suggested coding-agent instruction:
