@@ -2,20 +2,26 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertCircle,
+  Archive,
   BookOpen,
   Brain,
   CheckCircle2,
   Clock3,
+  Clipboard,
+  Copy,
   FilePlus2,
   FileText,
   FolderPlus,
   Home,
+  KeyRound,
   Layers,
   Network,
+  Plus,
   RefreshCw,
   Search,
   Send,
   Settings,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Upload,
@@ -199,6 +205,90 @@ type RepositoryDeleteResult = {
   deletedIndexedKnowledge: number;
 };
 
+type DebugSession = {
+  id: string;
+  title: string;
+  status: 'active' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+};
+
+type DebugInputType = 'csv' | 'json' | 'log';
+
+type DebugWarning = {
+  type: 'email' | 'phone' | 'name' | 'address' | 'unknown_pii' | 'risky_column';
+  message: string;
+  field?: string;
+  count?: number;
+};
+
+type DebugTokenMapping = {
+  sessionId: string;
+  token: string;
+  entityType: string;
+  table: string;
+  column: string;
+  realValue: string;
+  createdAt: string;
+};
+
+type DebugArtifact = {
+  id: string;
+  sessionId: string;
+  inputType: DebugInputType;
+  sourceName: string;
+  sanitizedText: string;
+  warningSummary: DebugWarning[];
+  dataRequestId?: string;
+  createdAt: string;
+};
+
+type DebugDataRequest = {
+  id: string;
+  sessionId: string;
+  status: 'pending' | 'completed' | 'rejected';
+  entity: string;
+  relation?: string;
+  parentToken?: string;
+  reason: string;
+  requestedFields: string[];
+  suggestedSql?: string;
+  createdAt: string;
+  completedAt?: string;
+};
+
+type DebugNote = {
+  id: string;
+  sessionId: string;
+  request: string;
+  createdAt: string;
+};
+
+type DebugAuditEvent = {
+  id: string;
+  sessionId: string;
+  action: string;
+  detail: string;
+  createdAt: string;
+};
+
+type DebugSessionDetail = {
+  session: DebugSession;
+  tokenMappings: DebugTokenMapping[];
+  artifacts: DebugArtifact[];
+  dataRequests: DebugDataRequest[];
+  notes: DebugNote[];
+  auditEvents: DebugAuditEvent[];
+};
+
+type SanitizeDebugResponse = {
+  session: DebugSession;
+  sanitizedText: string;
+  artifact: DebugArtifact;
+  warnings: DebugWarning[];
+  tokenMappings: DebugTokenMapping[];
+};
+
 type Toast = {
   id: string;
   type: 'success' | 'error';
@@ -206,7 +296,7 @@ type Toast = {
   message?: string;
 };
 
-type View = 'home' | 'repositories' | 'memories' | 'knowledge' | 'optimizer' | 'settings' | 'chat';
+type View = 'home' | 'repositories' | 'memories' | 'knowledge' | 'safeDebug' | 'optimizer' | 'settings' | 'chat';
 type IngestMode = 'upload' | 'text';
 
 const viewRoutes: Record<View, string> = {
@@ -214,6 +304,7 @@ const viewRoutes: Record<View, string> = {
   repositories: '/repositories',
   memories: '/memories',
   knowledge: '/knowledge',
+  safeDebug: '/safe-debug',
   optimizer: '/optimize',
   chat: '/chat',
   settings: '/settings'
@@ -234,6 +325,35 @@ const memoryLabels: Record<string, string> = {
   ProjectKnowledge: 'Project',
   DomainKnowledge: 'Domain',
   TechnicalDebt: 'Debt'
+};
+
+const safeDebugInstruction = `You are connected to a Safe Debug Session.
+
+Use only sanitized artifacts from the session.
+Do not ask the developer for raw production data.
+Do not ask for names, emails, phone numbers, addresses, or other PII.
+
+When you need more data, call create_debug_data_request with:
+- entity
+- relation
+- parentToken
+- reason
+- requestedFields
+
+Example:
+Need orders for USER_001 because payment status depends on order state.
+
+Do not write free-text requests in chat unless the MCP request tool is unavailable.`;
+
+const relationSqlTemplates: Record<string, Record<string, string>> = {
+  users: {
+    orders: 'SELECT *\nFROM orders\nWHERE user_id = {{realValue}};',
+    payments: 'SELECT *\nFROM payments\nWHERE user_id = {{realValue}};'
+  },
+  orders: {
+    payment_attempts: 'SELECT *\nFROM payment_attempts\nWHERE order_id = {{realValue}};',
+    order_items: 'SELECT *\nFROM order_items\nWHERE order_id = {{realValue}};'
+  }
 };
 
 function selectValue(value: string, options: string[]): string {
@@ -290,6 +410,10 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
+function sqlLiteral(value: string): string {
+  return /^-?\d+(\.\d+)?$/.test(value) ? value : `'${value.replaceAll("'", "''")}'`;
+}
+
 function App() {
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname));
   const [ingestMode, setIngestMode] = useState<IngestMode>('text');
@@ -304,6 +428,20 @@ function App() {
   const [repositoryStatus, setRepositoryStatus] = useState<RepositoryAgentStatus | null>(null);
   const [repositories, setRepositories] = useState<RepositoryItem[]>([]);
   const [projectRepositories, setProjectRepositories] = useState<RepositoryItem[]>([]);
+  const [debugSessions, setDebugSessions] = useState<DebugSession[]>([]);
+  const [activeDebugSessionId, setActiveDebugSessionId] = useState('');
+  const [debugDetail, setDebugDetail] = useState<DebugSessionDetail | null>(null);
+  const [debugTitle, setDebugTitle] = useState('');
+  const [debugRawText, setDebugRawText] = useState('');
+  const [debugInputType, setDebugInputType] = useState<DebugInputType>('csv');
+  const [debugSourceName, setDebugSourceName] = useState('users');
+  const [debugDataRequestId, setDebugDataRequestId] = useState('');
+  const [debugSanitizedText, setDebugSanitizedText] = useState('');
+  const [debugWarnings, setDebugWarnings] = useState<DebugWarning[]>([]);
+  const [debugTokenQuery, setDebugTokenQuery] = useState('');
+  const [debugResolvedToken, setDebugResolvedToken] = useState<DebugTokenMapping | null>(null);
+  const [debugTokenSearch, setDebugTokenSearch] = useState('');
+  const [claudeRequestDraft, setClaudeRequestDraft] = useState('');
   const [repositoryToLink, setRepositoryToLink] = useState('');
   const [deleteRepositoryKnowledge, setDeleteRepositoryKnowledge] = useState(false);
   const [memoryFilter, setMemoryFilter] = useState<string>('all');
@@ -364,6 +502,7 @@ function App() {
       request<RepositoryItem[]>('/api/repositories').catch(() => []),
       selectedProjectId ? request<RepositoryItem[]>(`/api/projects/${selectedProjectId}/repositories`).catch(() => []) : Promise.resolve([])
     ]);
+    const safeDebugSessions = await request<DebugSession[]>('/api/debug-sessions').catch(() => []);
     setProjects(projectList);
     if (projectList.length > 0) {
       const hasSelectedProject = projectList.some((project) => project.id === selectedProjectId);
@@ -375,6 +514,8 @@ function App() {
     setRepositoryStatus(repoStatus);
     setRepositories(repositoryList);
     setProjectRepositories(linkedRepositories);
+    setDebugSessions(safeDebugSessions);
+    if (!activeDebugSessionId && safeDebugSessions.length > 0) setActiveDebugSessionId(safeDebugSessions[0].id);
     setStatus(admin);
     setSettingsDraft(admin.settings);
   };
@@ -399,6 +540,16 @@ function App() {
     }
   }, [selectedProjectId, view]);
 
+  useEffect(() => {
+    if (!activeDebugSessionId) {
+      setDebugDetail(null);
+      return;
+    }
+    request<DebugSessionDetail>(`/api/debug-sessions/${activeDebugSessionId}`)
+      .then(setDebugDetail)
+      .catch((err) => reportError(err, 'Debug session load failed'));
+  }, [activeDebugSessionId]);
+
   const totalChunks = documents.reduce((sum, doc) => sum + doc.chunkCount, 0);
   const tokenSavings = optimizedContext ? (optimizedContext.tokenSavings?.savedTokens ?? Math.max(0, totalChunks * 650 - optimizedContext.estimatedTokens)) : 0;
   const lastSync = repositoryStatus?.lastIndexedAt ?? repositoryStatus?.repositories.find((repo) => repo.lastIndexedAt)?.lastIndexedAt;
@@ -416,6 +567,7 @@ function App() {
     { id: 'repositories' as const, label: 'Repositories', icon: Network },
     { id: 'memories' as const, label: 'Memories', icon: Brain },
     { id: 'knowledge' as const, label: 'Sources', icon: BookOpen },
+    { id: 'safeDebug' as const, label: 'Safe Debug', icon: ShieldCheck },
     { id: 'optimizer' as const, label: 'Optimize', icon: Sparkles },
     { id: 'settings' as const, label: 'Settings', icon: Settings }
   ];
@@ -431,6 +583,7 @@ function App() {
     repositories: 'Codebases linked to the active project.',
     memories: 'Decisions, conventions, fixes, and patterns for this project.',
     knowledge: 'Documents and notes available to coding agents.',
+    safeDebug: 'Sanitize production-like query output before sharing it with Claude.',
     optimizer: 'Create the smallest useful context for Claude Code.',
     settings: 'Configure models, optimization, repository sync, and advanced infrastructure.',
     chat: 'Ask cited questions against the active project.'
@@ -441,6 +594,7 @@ function App() {
     repositories: 'Repositories',
     memories: 'Memories',
     knowledge: 'Sources',
+    safeDebug: 'Safe Debug',
     optimizer: 'Context Optimizer',
     settings: 'Settings',
     chat: 'Chat'
@@ -802,6 +956,172 @@ function App() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const createDebugSession = async () => {
+    if (!debugTitle.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const session = await request<DebugSession>('/api/debug-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: debugTitle })
+      });
+      setDebugTitle('');
+      setActiveDebugSessionId(session.id);
+      await refresh();
+      showToast({ type: 'success', title: 'Debug session created', message: session.title });
+    } catch (err) {
+      reportError(err, 'Debug session creation failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openDebugSession = async (id: string) => {
+    setActiveDebugSessionId(id);
+    setDebugSanitizedText('');
+    setDebugWarnings([]);
+    setDebugResolvedToken(null);
+  };
+
+  const archiveDebugSession = async (id: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await request<DebugSession>(`/api/debug-sessions/${id}/archive`, { method: 'POST' });
+      if (activeDebugSessionId === id) {
+        setActiveDebugSessionId('');
+        setDebugDetail(null);
+      }
+      await refresh();
+      showToast({ type: 'success', title: 'Debug session archived' });
+    } catch (err) {
+      reportError(err, 'Archive failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sanitizeDebugData = async () => {
+    if (!activeDebugSessionId || !debugRawText.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await request<SanitizeDebugResponse>(`/api/debug-sessions/${activeDebugSessionId}/sanitize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inputType: debugInputType,
+          sourceName: debugSourceName || 'custom',
+          rawText: debugRawText,
+          dataRequestId: debugDataRequestId || undefined
+        })
+      });
+      setDebugRawText('');
+      setDebugDataRequestId('');
+      setDebugSanitizedText(response.sanitizedText);
+      setDebugWarnings(response.warnings);
+      setDebugDetail(await request<DebugSessionDetail>(`/api/debug-sessions/${activeDebugSessionId}`));
+      await refresh();
+      showToast({ type: 'success', title: 'Data sanitized', message: `${response.tokenMappings.length} token mapping(s)` });
+    } catch (err) {
+      reportError(err, 'Sanitization failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resolveDebugToken = async () => {
+    if (!activeDebugSessionId || !debugTokenQuery.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const mapping = await request<DebugTokenMapping>(`/api/debug-sessions/${activeDebugSessionId}/tokens/${encodeURIComponent(debugTokenQuery.trim())}`);
+      setDebugResolvedToken(mapping);
+      showToast({ type: 'success', title: 'Token resolved', message: `${mapping.table}.${mapping.column} = ${mapping.realValue}` });
+    } catch (err) {
+      reportError(err, 'Token resolve failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const recordClaudeRequest = async () => {
+    if (!activeDebugSessionId || !claudeRequestDraft.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await request<DebugNote>(`/api/debug-sessions/${activeDebugSessionId}/claude-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: claudeRequestDraft })
+      });
+      setClaudeRequestDraft('');
+      setDebugDetail(await request<DebugSessionDetail>(`/api/debug-sessions/${activeDebugSessionId}`));
+      showToast({ type: 'success', title: 'Claude request recorded' });
+    } catch (err) {
+      reportError(err, 'Request note failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateDebugDataRequest = async (requestId: string, action: 'complete' | 'reject') => {
+    if (!activeDebugSessionId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await request<DebugDataRequest>(`/api/debug-sessions/${activeDebugSessionId}/data-requests/${requestId}/${action}`, { method: 'POST' });
+      setDebugDetail(await request<DebugSessionDetail>(`/api/debug-sessions/${activeDebugSessionId}`));
+      await refresh();
+      showToast({ type: 'success', title: action === 'complete' ? 'Request completed' : 'Request rejected' });
+    } catch (err) {
+      reportError(err, 'Request update failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyDebugText = async (text: string, artifactId?: string) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      if (activeDebugSessionId) {
+        await request<{ recorded: boolean }>(`/api/debug-sessions/${activeDebugSessionId}/exports`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ artifactId })
+        }).catch(() => ({ recorded: false }));
+      }
+      showToast({ type: 'success', title: 'Copied' });
+    } catch (err) {
+      reportError(err, 'Copy failed');
+    }
+  };
+
+  const filteredDebugMappings = (debugDetail?.tokenMappings ?? []).filter((mapping) => {
+    const query = debugTokenSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [mapping.token, mapping.table, mapping.column, mapping.realValue]
+      .some((value) => value.toLowerCase().includes(query));
+  });
+
+  const pendingDebugRequests = (debugDetail?.dataRequests ?? []).filter((item) => item.status === 'pending');
+
+  const tokenMappingFor = (token?: string): DebugTokenMapping | undefined =>
+    token ? debugDetail?.tokenMappings.find((mapping) => mapping.token.toLowerCase() === token.toLowerCase()) : undefined;
+
+  const suggestedSqlFor = (item: DebugDataRequest): string => {
+    const mapping = tokenMappingFor(item.parentToken);
+    if (!mapping) return '';
+    const table = mapping.table.toLowerCase();
+    const relation = (item.relation || item.entity).toLowerCase();
+    const template = relationSqlTemplates[table]?.[relation];
+    if (template) return template.replaceAll('{{realValue}}', sqlLiteral(mapping.realValue));
+    const column = mapping.column.toLowerCase() === 'id' ? `${table.replace(/s$/, '')}_id` : mapping.column;
+    return `SELECT *\nFROM ${relation}\nWHERE ${column} = ${sqlLiteral(mapping.realValue)};`;
   };
 
   return (
@@ -1173,6 +1493,243 @@ function App() {
                 ))}
                 {documents.length === 0 && <div className="empty richEmpty"><strong>No sources indexed yet</strong><span>Add text, upload a file, or sync a repository so coding agents can retrieve useful context.</span></div>}
               </div>
+            </section>
+          </section>
+        )}
+
+        {view === 'safeDebug' && (
+          <section className="view safeDebugLayout">
+            <section className="safeDebugColumn">
+              <div className="safeDebugCreate">
+                <input value={debugTitle} onChange={(event) => setDebugTitle(event.target.value)} placeholder="BUG-123 or checkout failure" />
+                <button onClick={createDebugSession} disabled={busy || !debugTitle.trim()} title="Create session"><Plus size={18} /><span>Create</span></button>
+              </div>
+
+              <section className="debugList">
+                <div className="surfaceHeader">
+                  <h2>Sessions</h2>
+                  <span>{debugSessions.length} active</span>
+                </div>
+                {debugSessions.map((session) => (
+                  <article className={session.id === activeDebugSessionId ? 'debugSessionRow active' : 'debugSessionRow'} key={session.id}>
+                    <div>
+                      <strong>{session.title}</strong>
+                      <span>{session.id}</span>
+                      <small>Created {new Date(session.createdAt).toLocaleString()}</small>
+                      <small>Updated {new Date(session.updatedAt).toLocaleString()}</small>
+                    </div>
+                    <span className={session.status === 'active' ? 'badge success' : 'badge'}>{session.status}</span>
+                    <div className="debugRowActions">
+                      <button className="ghostButton" onClick={() => openDebugSession(session.id)} disabled={busy}>Open</button>
+                      <button className="iconButton" onClick={() => archiveDebugSession(session.id)} disabled={busy} title="Archive session"><Archive size={17} /></button>
+                    </div>
+                  </article>
+                ))}
+                {debugSessions.length === 0 && <div className="empty richEmpty"><strong>No debug sessions</strong><span>Create a session before pasting query output. Raw pasted data stays local to the sanitize request and is not stored.</span></div>}
+              </section>
+
+              <section className="debugInstruction">
+                <div className="surfaceHeader">
+                  <h2>Claude instruction</h2>
+                  <button className="iconButton" onClick={() => copyDebugText(safeDebugInstruction)} title="Copy instruction"><Copy size={17} /></button>
+                </div>
+                <pre>{safeDebugInstruction}</pre>
+              </section>
+            </section>
+
+            <section className="safeDebugDetail">
+              {debugDetail ? (
+                <>
+                  <section className="debugHeader">
+                    <div>
+                      <span className="eyebrow">Session header</span>
+                      <h2>{debugDetail.session.title}</h2>
+                      <p>{debugDetail.session.id}</p>
+                    </div>
+                    <div className="debugHeaderMeta">
+                      <span className={debugDetail.session.status === 'active' ? 'badge success' : 'badge'}>{debugDetail.session.status}</span>
+                      <small>Created {new Date(debugDetail.session.createdAt).toLocaleString()}</small>
+                    </div>
+                  </section>
+
+                  <section className="debugPanel">
+                    <div className="surfaceHeader">
+                      <h2>Pending Claude Requests</h2>
+                      <span>{pendingDebugRequests.length} pending</span>
+                    </div>
+                    <div className="debugRequestGrid">
+                      {debugDetail.dataRequests.map((item) => {
+                        const mapping = tokenMappingFor(item.parentToken);
+                        const suggestedSql = suggestedSqlFor(item);
+                        return (
+                          <article className="debugRequestCard" key={item.id}>
+                            <div className="debugRequestHeader">
+                              <div>
+                                <strong>{item.entity}</strong>
+                                <span>{item.relation || 'No relation'}{item.parentToken ? ` · ${item.parentToken}` : ''}</span>
+                              </div>
+                              <span className={item.status === 'pending' ? 'badge success' : 'badge'}>{item.status}</span>
+                            </div>
+                            <p>{item.reason}</p>
+                            {item.requestedFields.length > 0 && <small>Fields: {item.requestedFields.join(', ')}</small>}
+                            {mapping && <small>{item.parentToken} -&gt; {mapping.table}.{mapping.column} = {mapping.realValue}</small>}
+                            {suggestedSql && <pre>{suggestedSql}</pre>}
+                            <div className="debugRequestActions">
+                              <button className="ghostButton" onClick={() => copyDebugText(suggestedSql)} disabled={!suggestedSql}><Copy size={16} /><span>Copy SQL</span></button>
+                              <button className="ghostButton" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</button>
+                              <button className="dangerButton" onClick={() => updateDebugDataRequest(item.id, 'reject')} disabled={busy || item.status !== 'pending'}>Reject</button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                      {debugDetail.dataRequests.length === 0 && <div className="empty">Claude has not created any structured data requests yet.</div>}
+                    </div>
+                  </section>
+
+                  <section className="debugTwoColumn">
+                    <div className="debugPanel">
+                      <div className="surfaceHeader">
+                        <h2>Paste data</h2>
+                        <ShieldCheck size={18} />
+                      </div>
+                      <textarea value={debugRawText} onChange={(event) => setDebugRawText(event.target.value)} placeholder="Paste CSV, JSON, or log output here..." />
+                      <div className="debugControls">
+                        <select value={debugInputType} onChange={(event) => setDebugInputType(event.target.value as DebugInputType)}>
+                          <option value="csv">CSV</option>
+                          <option value="json">JSON</option>
+                          <option value="log">LOG</option>
+                        </select>
+                        <input value={debugSourceName} onChange={(event) => setDebugSourceName(event.target.value)} placeholder="users, orders, payments, custom" />
+                        <button onClick={sanitizeDebugData} disabled={busy || !debugRawText.trim()}><ShieldCheck size={18} /><span>Sanitize</span></button>
+                      </div>
+                      <select className="debugRequestSelect" value={debugDataRequestId} onChange={(event) => setDebugDataRequestId(event.target.value)}>
+                        <option value="">No linked Claude request</option>
+                        {pendingDebugRequests.map((item) => (
+                          <option value={item.id} key={item.id}>{item.entity}{item.parentToken ? ` for ${item.parentToken}` : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="debugPanel">
+                      <div className="surfaceHeader">
+                        <h2>Sanitized output</h2>
+                        <div className="debugInlineActions">
+                          <button className="iconButton" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText} title="Copy sanitized output"><Clipboard size={17} /></button>
+                          <button className="ghostButton" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText}>Save artifact</button>
+                        </div>
+                      </div>
+                      <pre className="debugOutput">{debugSanitizedText || 'Sanitized data will appear here.'}</pre>
+                    </div>
+                  </section>
+
+                  <section className="debugTwoColumn">
+                    <div className="debugPanel">
+                      <div className="surfaceHeader">
+                        <h2>Resolve token</h2>
+                        <KeyRound size={18} />
+                      </div>
+                      <div className="debugResolve">
+                        <input value={debugTokenQuery} onChange={(event) => setDebugTokenQuery(event.target.value)} placeholder="USER_001" />
+                        <button onClick={resolveDebugToken} disabled={busy || !debugTokenQuery.trim()}>Resolve</button>
+                      </div>
+                      {debugResolvedToken ? (
+                        <div className="resolvedToken">
+                          <span>{debugResolvedToken.token}</span>
+                          <strong>{debugResolvedToken.table}.{debugResolvedToken.column} = {debugResolvedToken.realValue}</strong>
+                          <button className="ghostButton" onClick={() => copyDebugText(debugResolvedToken.realValue)}><Copy size={16} /><span>Copy real id</span></button>
+                        </div>
+                      ) : (
+                        <div className="empty">Resolve a token to manually query the database without asking Claude for raw data.</div>
+                      )}
+                    </div>
+
+                    <div className="debugPanel">
+                      <div className="surfaceHeader">
+                        <h2>Claude requests</h2>
+                        <span>{debugDetail.notes.length}</span>
+                      </div>
+                      <div className="debugResolve">
+                        <input value={claudeRequestDraft} onChange={(event) => setClaudeRequestDraft(event.target.value)} placeholder="Need orders for USER_001" />
+                        <button onClick={recordClaudeRequest} disabled={busy || !claudeRequestDraft.trim()}>Record</button>
+                      </div>
+                      <div className="debugMiniList">
+                        {debugDetail.notes.slice(0, 4).map((note) => (
+                          <div key={note.id}><strong>{note.request}</strong><span>{new Date(note.createdAt).toLocaleString()}</span></div>
+                        ))}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="debugPanel">
+                    <div className="surfaceHeader">
+                      <h2>Token map</h2>
+                      <div className="memorySearch debugSearch">
+                        <Search size={16} />
+                        <input value={debugTokenSearch} onChange={(event) => setDebugTokenSearch(event.target.value)} placeholder="Search tokens..." />
+                      </div>
+                    </div>
+                    <div className="debugTable">
+                      <div className="debugTableHead">
+                        <span>Token</span>
+                        <span>Table</span>
+                        <span>Column</span>
+                        <span>Real value</span>
+                        <span>Created</span>
+                      </div>
+                      {filteredDebugMappings.map((mapping) => (
+                        <div className="debugTableRow" key={mapping.token}>
+                          <strong>{mapping.token}</strong>
+                          <span>{mapping.table}</span>
+                          <span>{mapping.column}</span>
+                          <span>{mapping.realValue}</span>
+                          <span>{new Date(mapping.createdAt).toLocaleString()}</span>
+                        </div>
+                      ))}
+                      {filteredDebugMappings.length === 0 && <div className="empty">No token mappings yet.</div>}
+                    </div>
+                  </section>
+
+                  <section className="debugTwoColumn">
+                    <div className="debugPanel">
+                      <div className="surfaceHeader">
+                        <h2>Shared artifacts</h2>
+                        <span>{debugDetail.artifacts.length}</span>
+                      </div>
+                      <div className="debugArtifactList">
+                        {debugDetail.artifacts.map((artifact) => (
+                          <article key={artifact.id}>
+                            <div>
+                              <strong>{artifact.inputType.toUpperCase()} · {artifact.sourceName}</strong>
+                              <span>{new Date(artifact.createdAt).toLocaleString()}</span>
+                              <small>{artifact.warningSummary.length} warning group(s)</small>
+                            </div>
+                            <button className="iconButton" onClick={() => copyDebugText(artifact.sanitizedText, artifact.id)} title="Copy artifact"><Copy size={17} /></button>
+                          </article>
+                        ))}
+                        {debugDetail.artifacts.length === 0 && <div className="empty">No sanitized artifacts saved yet.</div>}
+                      </div>
+                    </div>
+
+                    <div className="debugPanel">
+                      <div className="surfaceHeader">
+                        <h2>Warnings</h2>
+                        <AlertCircle size={18} />
+                      </div>
+                      <div className="debugWarningList">
+                        {(debugWarnings.length ? debugWarnings : debugDetail.artifacts[0]?.warningSummary ?? []).map((warning, index) => (
+                          <div key={`${warning.type}-${warning.field}-${index}`}>
+                            <strong>{warning.type.replace('_', ' ')}</strong>
+                            <span>{warning.message}{warning.field ? ` · ${warning.field}` : ''}{warning.count ? ` · ${warning.count}` : ''}</span>
+                          </div>
+                        ))}
+                        {debugWarnings.length === 0 && (debugDetail.artifacts[0]?.warningSummary.length ?? 0) === 0 && <div className="empty">No warnings for the latest artifact.</div>}
+                      </div>
+                    </div>
+                  </section>
+                </>
+              ) : (
+                <div className="empty richEmpty"><strong>Select or create a debug session</strong><span>Sessions keep deterministic fake-to-real mappings so follow-up CSV, JSON, and logs reuse the same tokens.</span></div>
+              )}
             </section>
           </section>
         )}

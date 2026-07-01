@@ -92,7 +92,7 @@ Coding task:
 Repository sync command:
 
 ```bash
-java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository billing-api --path .
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --repository billing-api --path .
 ```
 
 Backend-visible repository scan:

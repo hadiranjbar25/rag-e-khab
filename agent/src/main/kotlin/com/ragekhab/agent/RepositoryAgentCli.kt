@@ -90,7 +90,7 @@ fun main(args: Array<String>) {
 }
 
 private data class CliOptions(
-    val server: String = System.getenv("RAGEKHAB_URL") ?: "http://localhost:8080",
+    val server: String = System.getenv("RAGEKHAB_URL") ?: "http://localhost:8060",
     val repository: String? = null,
     val path: Path = Path.of("."),
     val profile: SyncProfile = SyncProfile.Claude,
@@ -598,10 +598,10 @@ private fun usage(): String =
     RAG-e Khab Repository Agent
 
     Usage:
-      java -jar ragekhab-agent.jar --server http://localhost:8080 --repository my-repo --path .
+      java -jar ragekhab-agent.jar --server http://localhost:8060 --repository my-repo --path .
 
     Options:
-      --server URL              RAG-e Khab backend URL. Default: RAGEKHAB_URL or http://localhost:8080
+      --server URL              RAG-e Khab backend URL. Default: RAGEKHAB_URL or http://localhost:8060
       --repository NAME         Stable repository name. Default: scanned folder name
       --name NAME               Alias for --repository
       --path PATH               Repository path to scan. Default: current directory

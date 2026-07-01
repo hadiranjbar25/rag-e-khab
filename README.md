@@ -56,8 +56,8 @@ docker compose up --build
 Then open:
 
 - UI: `http://localhost:5173`
-- REST API: `http://localhost:8080/api`
-- MCP endpoint: `http://localhost:8080/mcp`
+- REST API: `http://localhost:8060/api`
+- MCP endpoint: `http://localhost:8060/mcp`
 - Qdrant: `http://localhost:6333`
 
 For local backend development:
@@ -171,7 +171,7 @@ Run it from any repository:
 
 ```bash
 java -jar /path/to/RAGEKHAB/agent/build/libs/ragekhab-agent.jar \
-  --server http://localhost:8080 \
+  --server http://localhost:8060 \
   --repository billing-api \
   --path .
 ```
@@ -179,9 +179,9 @@ java -jar /path/to/RAGEKHAB/agent/build/libs/ragekhab-agent.jar \
 Run it for several repositories:
 
 ```bash
-java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository billing-api --path /repos/billing-api
-java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository admin-ui --path /repos/admin-ui
-java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository mobile-app --path /repos/mobile-app
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --repository billing-api --path /repos/billing-api
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --repository admin-ui --path /repos/admin-ui
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --repository mobile-app --path /repos/mobile-app
 ```
 
 Useful options:
@@ -199,7 +199,7 @@ Only use full source sync when you intentionally want RAG-e Khab to store the co
 
 ```bash
 java -jar /path/to/ragekhab-agent.jar \
-  --server http://localhost:8080 \
+  --server http://localhost:8060 \
   --repository billing-api \
   --path /repos/billing-api \
   --profile source
@@ -235,11 +235,11 @@ Each scan or agent sync can target a different repository. `repository` is the s
 Examples:
 
 ```bash
-curl -X POST http://localhost:8080/api/repository-agent/scan \
+curl -X POST http://localhost:8060/api/repository-agent/scan \
   -H "Content-Type: application/json" \
   -d '{"repository":"billing-api","path":"/repos/billing-api","full":true}'
 
-curl -X POST http://localhost:8080/api/repository-agent/scan \
+curl -X POST http://localhost:8060/api/repository-agent/scan \
   -H "Content-Type: application/json" \
   -d '{"repository":"admin-ui","path":"/repos/admin-ui","full":true}'
 ```
