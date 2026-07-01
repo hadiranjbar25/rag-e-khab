@@ -3,6 +3,9 @@ package com.ragekhab.debug
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.TextNode
+import com.ragekhab.memory.AgentMemory
+import com.ragekhab.memory.MemoryService
+import com.ragekhab.memory.RememberRequest
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
@@ -11,6 +14,7 @@ import java.util.UUID
 class DebugSessionService(
     private val store: DebugSessionStore,
     private val mapper: ObjectMapper,
+    private val memoryService: MemoryService,
 ) {
     fun create(title: String): DebugSession {
         val now = Instant.now()
@@ -182,6 +186,24 @@ class DebugSessionService(
         touch(sessionId)
         audit(sessionId, "debug_data_request_rejected", requestId.toString())
         return updated
+    }
+
+    fun promoteMemory(sessionId: UUID, request: PromoteDebugMemoryRequest): AgentMemory {
+        requireSession(sessionId)
+        validateMemoryPromotionContent(request.content)
+        val memory = memoryService.remember(
+            RememberRequest(
+                type = request.type,
+                content = request.content,
+                confidence = request.confidence,
+                repository = request.repository?.trim()?.takeIf { it.isNotBlank() },
+                module = request.module?.trim()?.takeIf { it.isNotBlank() },
+                projectId = request.projectId,
+            ),
+        )
+        touch(sessionId)
+        audit(sessionId, "memory_promoted", memory.id.toString())
+        return memory
     }
 
     fun contextForMcp(sessionId: UUID): DebugSessionContext {
@@ -392,6 +414,22 @@ class DebugSessionService(
     private fun requireSession(sessionId: UUID): DebugSession =
         store.getSession(sessionId) ?: error("Debug session not found.")
 
+    private fun validateMemoryPromotionContent(content: String) {
+        val trimmed = content.trim()
+        require(trimmed.isNotBlank()) { "Memory content must not be blank." }
+        val blocked = listOfNotNull(
+            debugTokenRegex.find(trimmed)?.value?.let { "debug token '$it'" },
+            emailRegex.find(trimmed)?.value?.let { "email address" },
+            phoneRegex.find(trimmed)?.value?.let { "phone number" },
+            cardRegex.find(trimmed)?.value?.let { "payment card-like value" },
+            ibanRegex.find(trimmed)?.value?.let { "IBAN-like value" },
+            sqlRealIdRegex.find(trimmed)?.value?.let { "SQL with a likely real identifier" },
+        )
+        require(blocked.isEmpty()) {
+            "Memory promotion blocked because content appears to contain ${blocked.first()}. Save only sanitized durable lessons."
+        }
+    }
+
     private fun parseCsv(raw: String): List<List<String>> {
         val rows = mutableListOf<List<String>>()
         val row = mutableListOf<String>()
@@ -487,6 +525,8 @@ class DebugSessionService(
         private val ibanRegex = Regex("""[A-Z]{2}\d{2}[A-Z0-9]{11,30}""", RegexOption.IGNORE_CASE)
         private val addressRegex = Regex("""\b\d{1,6}\s+[A-Za-z0-9 .'-]+\s+(Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Boulevard|Blvd)\b""", RegexOption.IGNORE_CASE)
         private val likelyNameRegex = Regex("""[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}""")
+        private val debugTokenRegex = Regex("""\b(?:USER|ORDER|PAYMENT|EMAIL|PERSON|PHONE|ADDRESS|UNKNOWN)_\d{3,}\b""")
+        private val sqlRealIdRegex = Regex("""\bwhere\s+[a-z_][a-z0-9_]*\s*=\s*(?:\d+|'[^']+')""", RegexOption.IGNORE_CASE)
         private val riskyColumns = listOf("email", "phone", "name", "address", "iban", "card", "ssn", "dob", "birth", "note", "comment", "description")
         private val configuredRules = mapOf(
             "users" to mapOf(

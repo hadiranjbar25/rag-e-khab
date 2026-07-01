@@ -1642,6 +1642,30 @@ textarea:focus {
   margin-top: 10px;
 }
 
+.promoteMemoryPanel .surfaceHeader span {
+  display: block;
+  max-width: 760px;
+  color: var(--warning);
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+
+.promoteMemoryGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) minmax(0, 1fr) minmax(0, 1fr) minmax(90px, 120px) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.promoteMemoryGrid textarea {
+  grid-column: 1 / 5;
+  min-height: 96px;
+}
+
+.promoteMemoryGrid button {
+  align-self: end;
+}
+
 .debugSearch {
   min-width: min(100%, 280px);
 }
@@ -1795,11 +1819,13 @@ textarea:focus {
   .optimizerLayout,
   .memoryToolbar,
   .memoryComposer,
-  .memoryComposerGrid {
+  .memoryComposerGrid,
+  .promoteMemoryGrid {
     grid-template-columns: 1fr;
   }
 
-  .memoryComposerGrid textarea {
+  .memoryComposerGrid textarea,
+  .promoteMemoryGrid textarea {
     grid-column: auto;
   }
 }

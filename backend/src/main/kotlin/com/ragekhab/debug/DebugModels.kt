@@ -2,6 +2,7 @@ package com.ragekhab.debug
 
 import com.fasterxml.jackson.annotation.JsonCreator
 import com.fasterxml.jackson.annotation.JsonValue
+import com.ragekhab.memory.MemoryType
 import java.time.Instant
 import java.util.UUID
 
@@ -146,6 +147,15 @@ data class CreateDebugDataRequest(
 data class DebugDataRequestCreated(
     val id: UUID,
     val status: DebugDataRequestStatus,
+)
+
+data class PromoteDebugMemoryRequest(
+    val type: MemoryType,
+    val content: String,
+    val confidence: Double = 0.9,
+    val repository: String? = null,
+    val module: String? = null,
+    val projectId: UUID? = null,
 )
 
 data class DebugSessionContext(
