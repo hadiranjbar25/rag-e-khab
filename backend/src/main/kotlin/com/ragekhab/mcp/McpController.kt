@@ -3,7 +3,9 @@ package com.ragekhab.mcp
 import com.ragekhab.chat.ChatService
 import com.ragekhab.context.ContextOptimizationRequest
 import com.ragekhab.context.ContextOptimizerService
+import com.ragekhab.debug.CreateDebugDataRequest
 import com.ragekhab.document.DocumentService
+import com.ragekhab.debug.DebugSessionService
 import com.ragekhab.memory.MemoryService
 import com.ragekhab.memory.MemoryType
 import com.ragekhab.memory.RecallMemoryRequest
@@ -33,6 +35,7 @@ class McpController(
     private val repositoryAgent: RepositoryAgentService,
     private val documentService: DocumentService,
     private val projectService: ProjectService,
+    private val debugSessions: DebugSessionService,
 ) {
     @PostMapping
     fun handle(@RequestBody request: JsonRpcRequest): JsonRpcResponse =
@@ -90,6 +93,30 @@ class McpController(
                 ),
             )
             "repository_status" -> repositoryAgent.status(arguments["repository"]?.toString()?.takeIf { it.isNotBlank() })
+            "list_debug_sessions" -> mapOf("sessions" to debugSessions.list(includeArchived = false))
+            "get_debug_session_context" -> debugSessions.contextForMcp(UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")))
+            "resolve_debug_token" -> debugSessions.resolveTokenForMcp(
+                UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")),
+                arguments["token"]?.toString() ?: error("Missing token"),
+            )
+            "record_claude_request" -> debugSessions.recordClaudeRequest(
+                UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")),
+                arguments["request"]?.toString() ?: error("Missing request"),
+            )
+            "create_debug_data_request" -> debugSessions.createDataRequest(
+                UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")),
+                CreateDebugDataRequest(
+                    entity = arguments["entity"]?.toString() ?: error("Missing entity"),
+                    relation = arguments["relation"]?.toString()?.takeIf { it.isNotBlank() },
+                    parentToken = arguments["parentToken"]?.toString()?.takeIf { it.isNotBlank() },
+                    reason = arguments["reason"]?.toString() ?: error("Missing reason"),
+                    requestedFields = stringListArgument(arguments["requestedFields"]),
+                ),
+            )
+            "list_debug_data_requests" -> mapOf(
+                "requests" to debugSessions.listDataRequests(UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId"))),
+            )
+            "get_debug_session_state" -> debugSessions.stateForMcp(UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")))
             "optimize_context" -> optimizerService.optimize(
                 ContextOptimizationRequest(
                     task = arguments["task"]?.toString() ?: error("Missing task"),
@@ -121,6 +148,13 @@ class McpController(
         tool("learn_from_session", "Future tool: extract durable memories from completed coding work.", mapOf("session" to "string")),
         tool("scan_repository", "Scan and synchronize a named repository into the knowledge base.", mapOf("repository" to "string", "name" to "string", "path" to "string", "full" to "boolean", "projectId" to "string")),
         tool("repository_status", "Return repository-agent synchronization metadata.", mapOf("repository" to "string")),
+        tool("list_debug_sessions", "List active Safe Debug Sessions. Returns session metadata only.", emptyMap()),
+        tool("get_debug_session_context", "Return sanitized Safe Debug Session artifacts and token names only. Raw pasted data and real values are never returned.", mapOf("sessionId" to "string")),
+        tool("resolve_debug_token", "Sensitive local-only tool: resolve one Safe Debug token to its real database identifier so the developer can manually query more data.", mapOf("sessionId" to "string", "token" to "string")),
+        tool("record_claude_request", "Record a Claude request for more sanitized data in a Safe Debug Session.", mapOf("sessionId" to "string", "request" to "string")),
+        tool("create_debug_data_request", "Create a structured pending Safe Debug data request. Returns only request id and status; never raw data or real IDs.", mapOf("sessionId" to "string", "entity" to "string", "relation" to "string", "parentToken" to "string", "reason" to "string", "requestedFields" to "array")),
+        tool("list_debug_data_requests", "List Safe Debug data request statuses and sanitized request summaries for a session. Does not return real IDs or SQL.", mapOf("sessionId" to "string")),
+        tool("get_debug_session_state", "Return sanitized Safe Debug artifacts, request summaries, timeline, and notes. Does not return raw data, token real values, or real SQL.", mapOf("sessionId" to "string")),
         tool("optimize_context", "Return the smallest Claude Code context needed to complete a coding task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
         tool("ask_knowledge_base", "Ask a question and receive an answer with sources, optionally within a project.", mapOf("question" to "string", "limit" to "number", "projectId" to "string")),
         tool("list_documents", "List uploaded documents, optionally within a project.", mapOf("projectId" to "string")),
@@ -133,6 +167,14 @@ class McpController(
         return MemoryType.entries.firstOrNull { it.name.filter { char -> char.isLetterOrDigit() }.lowercase() == normalized }
             ?: error("Unsupported memory type '$value'. Available: ${MemoryType.entries.joinToString { it.name }}")
     }
+
+    private fun stringListArgument(value: Any?): List<String> =
+        when (value) {
+            is List<*> -> value.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }
+            is Array<*> -> value.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }
+            is String -> value.split(",").mapNotNull { it.trim().takeIf(String::isNotBlank) }
+            else -> emptyList()
+        }
 
     private fun tool(name: String, description: String, properties: Map<String, String>) = mapOf(
         "name" to name,

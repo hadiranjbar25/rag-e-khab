@@ -47,6 +47,19 @@ flowchart TD
 - React, TypeScript, Vite
 - JSON-RPC MCP endpoint at `/mcp`
 
+## Features
+
+- Private RAG workspace for uploading documents, adding notes, searching, and chatting with cited sources.
+- Project-aware knowledge organization with linkable repositories and memories.
+- Repository Agent for syncing local codebases into the knowledge base.
+- Persistent coding-agent memory for architecture decisions, conventions, bug fixes, patterns, project knowledge, domain knowledge, and technical debt.
+- Context Optimizer MCP tool that retrieves and optionally compresses the smallest useful context for Claude Code and other MCP clients.
+- Runtime model/admin settings for chat, embeddings, optimizer mode, local LLM compression, and repository scanning.
+- Safe Debug Sessions for sanitizing CSV, JSON, and logs before sharing production-like debugging data with Claude.
+- Deterministic debug token mappings such as `USER_001`, `ORDER_001`, `EMAIL_001`, and `PHONE_001` scoped to a session.
+- Structured Claude debug data requests through MCP, shown in the UI as developer tasks with private token resolution and suggested SQL.
+- Local-first JSON persistence for memories, runtime settings, repository catalog data, and Safe Debug Sessions.
+
 ## Run
 
 ```bash
@@ -56,8 +69,8 @@ docker compose up --build
 Then open:
 
 - UI: `http://localhost:5173`
-- REST API: `http://localhost:8080/api`
-- MCP endpoint: `http://localhost:8080/mcp`
+- REST API: `http://localhost:8060/api`
+- MCP endpoint: `http://localhost:8060/mcp`
 - Qdrant: `http://localhost:6333`
 
 For local backend development:
@@ -73,6 +86,17 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Project Structure
+
+- `frontend/src/main.tsx` mounts React and imports global styles.
+- `frontend/src/App.tsx` contains the current app shell and feature views.
+- `frontend/src/styles.css` contains the shared UI styling.
+- `backend/src/main/kotlin/com/ragekhab/api` contains REST controllers.
+- `backend/src/main/kotlin/com/ragekhab/mcp` contains the JSON-RPC MCP controller.
+- `backend/src/main/kotlin/com/ragekhab/debug` contains Safe Debug Sessions models, storage, and sanitization workflow.
+
+The frontend has been moved out of the old single-file entrypoint shape. `App.tsx` is still intentionally conservative for now; the next natural split is feature folders such as `features/safe-debug`, `features/memories`, and `features/repositories`.
 
 ## REST API
 
@@ -96,6 +120,39 @@ npm run dev
 - `POST /api/memories/recall`
 - `GET /api/memories`
 - `DELETE /api/memories/{id}`
+- `GET /api/debug-sessions`
+- `POST /api/debug-sessions`
+- `GET /api/debug-sessions/{sessionId}`
+- `POST /api/debug-sessions/{sessionId}/sanitize`
+- `GET /api/debug-sessions/{sessionId}/tokens/{token}`
+- `GET /api/debug-sessions/{sessionId}/data-requests`
+- `POST /api/debug-sessions/{sessionId}/data-requests`
+- `POST /api/debug-sessions/{sessionId}/data-requests/{requestId}/complete`
+- `POST /api/debug-sessions/{sessionId}/data-requests/{requestId}/reject`
+- `POST /api/debug-sessions/{sessionId}/exports`
+
+## Safe Debug Sessions
+
+Safe Debug Sessions let a developer paste production-like CSV, JSON, or log output locally, sanitize it, and share only sanitized artifacts with Claude.
+
+Core behavior:
+
+- Raw pasted data is processed locally by the sanitize endpoint and is not persisted as an artifact.
+- Sensitive values are masked or tokenized.
+- Token mappings are deterministic inside a session, so the same real `users.id` continues to map to the same fake `USER_001`.
+- Sanitized artifacts, warnings, notes, audit events, and token mappings are stored locally.
+- Claude can create structured data requests through MCP instead of asking for more raw data in chat.
+- The UI resolves fake tokens back to real IDs privately and can suggest SQL for the developer to run manually.
+- Suggested SQL with real IDs is generated only in the developer UI and is not returned by MCP.
+
+Typical workflow:
+
+1. Create a Safe Debug Session.
+2. Paste query output as CSV, JSON, or logs.
+3. Sanitize it and copy the sanitized artifact to Claude.
+4. Claude calls `create_debug_data_request` when it needs follow-up data.
+5. The developer sees the pending request, copies privately generated SQL, queries manually, pastes the result, and links the new artifact to the request.
+6. The request is marked completed or rejected.
 
 ## Persistent Memory
 
@@ -171,7 +228,7 @@ Run it from any repository:
 
 ```bash
 java -jar /path/to/RAGEKHAB/agent/build/libs/ragekhab-agent.jar \
-  --server http://localhost:8080 \
+  --server http://localhost:8060 \
   --repository billing-api \
   --path .
 ```
@@ -179,9 +236,9 @@ java -jar /path/to/RAGEKHAB/agent/build/libs/ragekhab-agent.jar \
 Run it for several repositories:
 
 ```bash
-java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository billing-api --path /repos/billing-api
-java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository admin-ui --path /repos/admin-ui
-java -jar /path/to/ragekhab-agent.jar --server http://localhost:8080 --repository mobile-app --path /repos/mobile-app
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --repository billing-api --path /repos/billing-api
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --repository admin-ui --path /repos/admin-ui
+java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --repository mobile-app --path /repos/mobile-app
 ```
 
 Useful options:
@@ -199,7 +256,7 @@ Only use full source sync when you intentionally want RAG-e Khab to store the co
 
 ```bash
 java -jar /path/to/ragekhab-agent.jar \
-  --server http://localhost:8080 \
+  --server http://localhost:8060 \
   --repository billing-api \
   --path /repos/billing-api \
   --profile source
@@ -235,11 +292,11 @@ Each scan or agent sync can target a different repository. `repository` is the s
 Examples:
 
 ```bash
-curl -X POST http://localhost:8080/api/repository-agent/scan \
+curl -X POST http://localhost:8060/api/repository-agent/scan \
   -H "Content-Type: application/json" \
   -d '{"repository":"billing-api","path":"/repos/billing-api","full":true}'
 
-curl -X POST http://localhost:8080/api/repository-agent/scan \
+curl -X POST http://localhost:8060/api/repository-agent/scan \
   -H "Content-Type: application/json" \
   -d '{"repository":"admin-ui","path":"/repos/admin-ui","full":true}'
 ```
@@ -354,6 +411,15 @@ The MCP JSON-RPC endpoint supports:
 - `learn_from_session`
 - `scan_repository`
 - `repository_status`
+- `list_debug_sessions`
+- `get_debug_session_context`
+- `create_debug_data_request`
+- `list_debug_data_requests`
+- `get_debug_session_state`
+- `resolve_debug_token`
+- `record_claude_request`
+
+Safe Debug MCP tools never return raw pasted data, token real values, or UI-generated SQL with real IDs. `resolve_debug_token` is marked as sensitive and is limited to database identifier tokens so the developer can manually query follow-up data.
 
 ### `optimize_context`
 
