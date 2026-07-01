@@ -10,5 +10,5 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /workspace/backend/build/libs/*.jar /app/rag-e-khab.jar
-EXPOSE 8080
+EXPOSE 8060
 ENTRYPOINT ["java", "-jar", "/app/rag-e-khab.jar"]

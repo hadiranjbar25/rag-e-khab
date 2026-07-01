@@ -1,0 +1,186 @@
+package com.ragekhab.debug
+
+import com.fasterxml.jackson.annotation.JsonCreator
+import com.fasterxml.jackson.annotation.JsonValue
+import java.time.Instant
+import java.util.UUID
+
+enum class DebugSessionStatus {
+    active,
+    archived,
+}
+
+enum class DebugInputType {
+    csv,
+    json,
+    log,
+}
+
+enum class DebugWarningType(private val wireName: String) {
+    email("email"),
+    phone("phone"),
+    person_name("name"),
+    address("address"),
+    unknown_pii("unknown_pii"),
+    risky_column("risky_column");
+
+    @JsonValue
+    fun json(): String = wireName
+
+    companion object {
+        @JvmStatic
+        @JsonCreator
+        fun from(value: String): DebugWarningType =
+            entries.firstOrNull { it.wireName == value || it.name == value }
+                ?: error("Unsupported debug warning type '$value'")
+    }
+}
+
+enum class DebugDataRequestStatus {
+    pending,
+    completed,
+    rejected,
+}
+
+data class DebugSession(
+    val id: UUID,
+    val title: String,
+    val status: DebugSessionStatus,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+)
+
+data class DebugTokenMapping(
+    val sessionId: UUID,
+    val token: String,
+    val entityType: String,
+    val table: String,
+    val column: String,
+    val realValue: String,
+    val createdAt: Instant,
+)
+
+data class DebugArtifact(
+    val id: UUID,
+    val sessionId: UUID,
+    val inputType: DebugInputType,
+    val sourceName: String,
+    val sanitizedText: String,
+    val warningSummary: List<DebugWarning>,
+    val dataRequestId: UUID? = null,
+    val createdAt: Instant,
+)
+
+data class DebugWarning(
+    val type: DebugWarningType,
+    val message: String,
+    val field: String? = null,
+    val count: Int? = null,
+)
+
+data class DebugNote(
+    val id: UUID,
+    val sessionId: UUID,
+    val request: String,
+    val createdAt: Instant,
+)
+
+data class DebugAuditEvent(
+    val id: UUID,
+    val sessionId: UUID,
+    val action: String,
+    val detail: String,
+    val createdAt: Instant,
+)
+
+data class DebugDataRequest(
+    val id: UUID,
+    val sessionId: UUID,
+    val status: DebugDataRequestStatus,
+    val entity: String,
+    val relation: String? = null,
+    val parentToken: String? = null,
+    val reason: String,
+    val requestedFields: List<String> = emptyList(),
+    val suggestedSql: String? = null,
+    val createdAt: Instant,
+    val completedAt: Instant? = null,
+)
+
+data class CreateDebugSessionRequest(val title: String)
+
+data class SanitizeDebugRequest(
+    val inputType: DebugInputType,
+    val sourceName: String,
+    val rawText: String,
+    val dataRequestId: UUID? = null,
+)
+
+data class SanitizeDebugResponse(
+    val session: DebugSession,
+    val sanitizedText: String,
+    val artifact: DebugArtifact,
+    val warnings: List<DebugWarning>,
+    val tokenMappings: List<DebugTokenMapping>,
+)
+
+data class DebugSessionDetail(
+    val session: DebugSession,
+    val tokenMappings: List<DebugTokenMapping>,
+    val artifacts: List<DebugArtifact>,
+    val dataRequests: List<DebugDataRequest>,
+    val notes: List<DebugNote>,
+    val auditEvents: List<DebugAuditEvent>,
+)
+
+data class RecordClaudeRequest(val request: String)
+
+data class CreateDebugDataRequest(
+    val entity: String,
+    val relation: String? = null,
+    val parentToken: String? = null,
+    val reason: String,
+    val requestedFields: List<String> = emptyList(),
+)
+
+data class DebugDataRequestCreated(
+    val id: UUID,
+    val status: DebugDataRequestStatus,
+)
+
+data class DebugSessionContext(
+    val session: DebugSession,
+    val artifacts: List<DebugArtifact>,
+    val tokens: List<DebugSafeToken>,
+    val dataRequests: List<DebugSafeDataRequest>,
+    val notes: List<DebugNote>,
+)
+
+data class DebugSafeToken(
+    val token: String,
+    val entityType: String,
+    val table: String,
+    val column: String,
+    val createdAt: Instant,
+)
+
+data class DebugSafeDataRequest(
+    val id: UUID,
+    val sessionId: UUID,
+    val status: DebugDataRequestStatus,
+    val entity: String,
+    val relation: String? = null,
+    val parentToken: String? = null,
+    val reason: String,
+    val requestedFields: List<String> = emptyList(),
+    val createdAt: Instant,
+    val completedAt: Instant? = null,
+)
+
+data class DebugSessionState(
+    val session: DebugSession,
+    val artifacts: List<DebugArtifact>,
+    val dataRequests: List<DebugSafeDataRequest>,
+    val timeline: List<DebugAuditEvent>,
+    val notes: List<DebugNote>,
+)
