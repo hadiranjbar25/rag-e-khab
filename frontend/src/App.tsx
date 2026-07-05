@@ -1,5 +1,33 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  AppShell,
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Checkbox,
+  FileInput,
+  Group,
+  Image,
+  LoadingOverlay,
+  Menu,
+  NavLink,
+  NativeSelect,
+  Paper,
+  Pagination,
+  ScrollArea,
+  SegmentedControl,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+  ThemeIcon,
+  Title,
+  useMantineColorScheme,
+} from '@mantine/core';
+import {
   AlertCircle,
   Archive,
   BookOpen,
@@ -14,6 +42,7 @@ import {
   Home,
   KeyRound,
   Layers,
+  Moon,
   Network,
   Plus,
   RefreshCw,
@@ -22,6 +51,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Sun,
   Trash2,
   Upload,
   X,
@@ -413,8 +443,10 @@ function sqlLiteral(value: string): string {
 }
 
 export default function App() {
+  const { colorScheme, setColorScheme } = useMantineColorScheme();
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname));
   const [ingestMode, setIngestMode] = useState<IngestMode>('text');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(() => projectIdFromSearch(window.location.search));
   const [projectName, setProjectName] = useState('');
@@ -444,6 +476,8 @@ export default function App() {
   const [deleteRepositoryKnowledge, setDeleteRepositoryKnowledge] = useState(false);
   const [memoryFilter, setMemoryFilter] = useState<string>('all');
   const [memorySearch, setMemorySearch] = useState('');
+  const [memoryPage, setMemoryPage] = useState(1);
+  const [memoryPageSize, setMemoryPageSize] = useState(12);
   const [memoryTypeDraft, setMemoryTypeDraft] = useState('CodingConvention');
   const [memoryContentDraft, setMemoryContentDraft] = useState('');
   const [memoryRepositoryDraft, setMemoryRepositoryDraft] = useState('');
@@ -609,14 +643,29 @@ export default function App() {
     return counts;
   }, [memories]);
 
-  const filteredMemories = memories.filter((memory) => {
+  const filteredMemories = useMemo(() => memories.filter((memory) => {
     const matchesType = memoryFilter === 'all' || memory.type === memoryFilter;
     const query = memorySearch.trim().toLowerCase();
     const matchesSearch = !query || [memory.content, memory.repository, memory.module, memory.type]
       .filter(Boolean)
       .some((value) => value!.toLowerCase().includes(query));
     return matchesType && matchesSearch;
-  });
+  }), [memories, memoryFilter, memorySearch]);
+
+  const memoryPageCount = Math.max(1, Math.ceil(filteredMemories.length / memoryPageSize));
+  const normalizedMemoryPage = Math.min(memoryPage, memoryPageCount);
+  const memoryPageStart = (normalizedMemoryPage - 1) * memoryPageSize;
+  const pagedMemories = filteredMemories.slice(memoryPageStart, memoryPageStart + memoryPageSize);
+  const memoryRangeStart = filteredMemories.length === 0 ? 0 : memoryPageStart + 1;
+  const memoryRangeEnd = Math.min(memoryPageStart + memoryPageSize, filteredMemories.length);
+
+  useEffect(() => {
+    setMemoryPage(1);
+  }, [memoryFilter, memorySearch, selectedProjectId, memoryPageSize]);
+
+  useEffect(() => {
+    if (memoryPage > memoryPageCount) setMemoryPage(memoryPageCount);
+  }, [memoryPage, memoryPageCount]);
 
   const recentActivity = useMemo(() => {
     const activities = [
@@ -651,9 +700,9 @@ export default function App() {
       .slice(0, 8);
   }, [documents, memories, repositoryStatus?.repositories]);
 
-  const upload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const upload = async (file: File | null) => {
     if (!file) return;
+    setUploadFile(file);
     const body = new FormData();
     body.append('file', file);
     if (selectedProjectId) body.append('projectId', selectedProjectId);
@@ -667,7 +716,7 @@ export default function App() {
       reportError(err, 'Upload failed');
     } finally {
       setBusy(false);
-      event.target.value = '';
+      setUploadFile(null);
     }
   };
 
@@ -1158,7 +1207,12 @@ export default function App() {
   };
 
   return (
-    <main className={busy ? 'shell isBusy' : 'shell'}>
+    <AppShell
+      navbar={{ width: 280, breakpoint: 'sm' }}
+      padding="lg"
+      className={busy ? 'mantineShell isBusy' : 'mantineShell'}
+    >
+      <LoadingOverlay visible={busy} overlayProps={{ radius: 'sm', blur: 1 }} />
       <div className="toastStack" aria-live="polite" aria-atomic="true">
         {toasts.map((toast) => {
           const Icon = toast.type === 'success' ? CheckCircle2 : AlertCircle;
@@ -1177,54 +1231,72 @@ export default function App() {
         })}
       </div>
 
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brandMark"><img src="/favicon.svg" alt="" /></div>
-          <div>
-            <strong>RAG-e Khab</strong>
-            <span>Coding-agent memory</span>
-          </div>
-        </div>
-        <label className="workspaceSwitcher">
-          <span>Project</span>
-          <select value={selectedProjectId} onChange={(event) => setSelectedProjectId(event.target.value)}>
-            {projects.map((project) => (
-              <option value={project.id} key={project.id}>{project.name}</option>
-            ))}
-          </select>
-        </label>
-        <div className="systemPill">
-          <span className={status?.index.vectorStore === 'qdrant' ? 'statusDot online' : 'statusDot'} />
-          <span>{status?.index.vectorStore ?? 'starting'}</span>
-        </div>
-        <nav>
+      <AppShell.Navbar className="mantineNavbar">
+        <Stack gap="lg" h="100%">
+          <Group gap="sm" wrap="nowrap">
+            <ThemeIcon size={42} radius="sm" color="teal">
+              <Image src="/favicon.svg" alt="" w={24} h={24} />
+            </ThemeIcon>
+            <Box flex={1}>
+              <Title order={3} size="h4">RAG-e Khab</Title>
+              <Text size="sm" c="dimmed">Coding-agent memory</Text>
+            </Box>
+            <ActionIcon
+              variant="subtle"
+              color="teal"
+              aria-label={colorScheme === 'dark' ? 'Use light theme' : 'Use dark theme'}
+              onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}
+            >
+              {colorScheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </ActionIcon>
+          </Group>
+
+          <Select
+            label="Project"
+            value={selectedProjectId}
+            onChange={(value) => setSelectedProjectId(value ?? '')}
+            data={projects.map((project) => ({ value: project.id, label: project.name }))}
+            searchable
+            nothingFoundMessage="No projects"
+          />
+
+          <Badge
+            color={status?.index.vectorStore === 'qdrant' ? 'teal' : 'gray'}
+            variant="light"
+            leftSection={<span className={status?.index.vectorStore === 'qdrant' ? 'statusDot online' : 'statusDot'} />}
+          >
+            {status?.index.vectorStore ?? 'starting'}
+          </Badge>
+
+          <ScrollArea flex={1}>
+          <Stack gap={4}>
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button
-                className={view === item.id ? 'navItem active' : 'navItem'}
+              <NavLink
+                active={view === item.id}
                 onClick={() => navigate(item.id)}
                 aria-current={view === item.id ? 'page' : undefined}
                 key={item.id}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </button>
+                label={item.label}
+                leftSection={<Icon size={18} />}
+                variant="filled"
+              />
             );
           })}
-        </nav>
-      </aside>
+          </Stack>
+          </ScrollArea>
+        </Stack>
+      </AppShell.Navbar>
 
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <h1>{pageTitles[view]}</h1>
-            <p>{pageCopy[view]}</p>
-          </div>
-        </header>
+      <AppShell.Main className="mantineWorkspace">
+        <Paper className="mantineTopbar" p="lg" radius="sm" withBorder>
+          <Title order={1}>{pageTitles[view]}</Title>
+          <Text c="dimmed" mt={4}>{pageCopy[view]}</Text>
+        </Paper>
         {busy && <div className="loadingBar" aria-label="Working" />}
 
-        {error && <div className="notice">{error}</div>}
+        {error && <Alert color="red" icon={<AlertCircle size={18} />}>{error}</Alert>}
 
         {view === 'home' && (
           <section className="view">
@@ -1297,15 +1369,19 @@ export default function App() {
               </div>
               <details className="advancedPanel">
                 <summary>Link repository</summary>
-                <div className="linkRepositoryControls">
-                  <select value={repositoryToLink} onChange={(event) => setRepositoryToLink(event.target.value)}>
-                    <option value="">Select repository</option>
-                    {repositories.filter((repository) => !linkedRepositoryIds.has(repository.id)).map((repository) => (
-                      <option value={repository.id} key={repository.id}>{repository.name}</option>
-                    ))}
-                  </select>
-                  <button onClick={() => linkRepositoryToProject()} disabled={busy || !repositoryToLink}>Link</button>
-                </div>
+                <Group className="linkRepositoryControls" align="end" gap="sm">
+                  <Select
+                    placeholder="Select repository"
+                    value={repositoryToLink || null}
+                    onChange={(value) => setRepositoryToLink(value ?? '')}
+                    data={repositories
+                      .filter((repository) => !linkedRepositoryIds.has(repository.id))
+                      .map((repository) => ({ value: repository.id, label: repository.name }))}
+                    searchable
+                    clearable
+                  />
+                  <Button onClick={() => linkRepositoryToProject()} disabled={busy || !repositoryToLink}>Link</Button>
+                </Group>
               </details>
             </div>
 
@@ -1324,31 +1400,37 @@ export default function App() {
                 const linkedMemories = memories.filter((memory) => memory.repository === repo.name).length;
                 return (
                 <article className="repoCard" key={repo.id}>
-                  <div className="repoCardHeader">
-                    <div>
-                      <strong>{repo.name}</strong>
-                      <span>Last sync {repo.lastSyncedAt ? new Date(repo.lastSyncedAt).toLocaleString() : 'not available'}</span>
-                    </div>
-                    <div className="repoStatusStack">
-                      <span className={repo.status === 'synced' ? 'badge success' : 'badge'}>{repo.status}</span>
-                      <span className={linked ? 'linkState linked' : 'linkState'}>{linked ? 'In this project' : 'Not in project'}</span>
-                    </div>
-                  </div>
+	                  <div className="repoCardHeader">
+	                    <div>
+	                      <strong>{repo.name}</strong>
+	                      <span>Last sync {repo.lastSyncedAt ? new Date(repo.lastSyncedAt).toLocaleString() : 'not available'}</span>
+	                    </div>
+	                    <div className="repoStatusStack">
+	                      <Badge color={repo.status === 'synced' ? 'green' : 'gray'} variant="light">{repo.status}</Badge>
+	                      <Badge color={linked ? 'violet' : 'gray'} variant="outline">{linked ? 'In this project' : 'Not in project'}</Badge>
+	                    </div>
+	                  </div>
                   <div className="repoStats">
                     <div><span>Knowledge</span><strong>{files.length}</strong></div>
                     <div><span>Memories</span><strong>{linkedMemories}</strong></div>
                   </div>
-                  <div className="repoActions">
-                    {linked ? (
-                      <button className="ghostButton" onClick={() => unlinkRepositoryFromProject(repo.id)} disabled={busy}>Remove</button>
-                    ) : (
-                      <button onClick={() => linkRepositoryToProject(repo.id)} disabled={busy}>Link to project</button>
-                    )}
-                    <details className="compactMenu">
-                      <summary>More</summary>
-                      <button className="dangerButton" onClick={() => deleteRepository(repo)} disabled={busy}><Trash2 size={16} /><span>Delete repository</span></button>
-                    </details>
-                  </div>
+	                  <div className="repoActions">
+	                    {linked ? (
+	                      <Button variant="subtle" color="gray" onClick={() => unlinkRepositoryFromProject(repo.id)} disabled={busy}>Remove</Button>
+	                    ) : (
+	                      <Button onClick={() => linkRepositoryToProject(repo.id)} disabled={busy}>Link to project</Button>
+	                    )}
+	                    <Menu shadow="md" width={210} position="bottom-end">
+	                      <Menu.Target>
+	                        <Button variant="light" color="gray">More</Button>
+	                      </Menu.Target>
+	                      <Menu.Dropdown>
+	                        <Menu.Item color="red" leftSection={<Trash2 size={16} />} onClick={() => deleteRepository(repo)} disabled={busy}>
+	                          Delete repository
+	                        </Menu.Item>
+	                      </Menu.Dropdown>
+	                    </Menu>
+	                  </div>
                   <details className="repoDetails">
                     <summary>Details</summary>
                     <div>
@@ -1363,23 +1445,25 @@ export default function App() {
               {repositories.length === 0 && (repositoryStatus?.repositories.length ?? 0) === 0 && <div className="empty richEmpty"><strong>No repositories yet</strong><span>Run the RAG-e Khab agent from a codebase to register a repository, then link it to this project.</span></div>}
             </div>
 
-            <details className="advancedPanel">
-              <summary>Repository deletion options</summary>
-              <label className="inlineToggle deletionToggle">
-                <input type="checkbox" checked={deleteRepositoryKnowledge} onChange={(event) => setDeleteRepositoryKnowledge(event.target.checked)} />
-                Delete indexed knowledge when deleting a repository
-              </label>
-            </details>
+	            <details className="advancedPanel">
+	              <summary>Repository deletion options</summary>
+	              <Checkbox
+	                className="deletionToggle"
+	                checked={deleteRepositoryKnowledge}
+	                onChange={(event) => setDeleteRepositoryKnowledge(event.currentTarget.checked)}
+	                label="Delete indexed knowledge when deleting a repository"
+	              />
+	            </details>
 
             <details className="advancedPanel workspacePanel">
               <summary>Projects</summary>
-              <div className="surfaceHeader">
-                <h2>Projects</h2>
-                <div className="createInline">
-                  <input value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="New project" />
-                  <button onClick={createProject} disabled={busy || !projectName.trim()} title="Create project"><FolderPlus size={18} /><span>Create</span></button>
-                </div>
-              </div>
+	              <div className="surfaceHeader">
+	                <h2>Projects</h2>
+	                <Group className="createInline" gap="sm">
+	                  <TextInput value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="New project" />
+	                  <Button onClick={createProject} disabled={busy || !projectName.trim()} title="Create project" leftSection={<FolderPlus size={18} />}>Create</Button>
+	                </Group>
+	              </div>
               <div className="projectGrid">
                 {projects.map((project) => (
                   <div className={project.id === selectedProjectId ? 'projectCard active' : 'projectCard'} key={project.id}>
@@ -1387,17 +1471,17 @@ export default function App() {
                     <span>{project.name}</span>
                     <strong>{project.documentCount}</strong>
                     <small>created {new Date(project.createdAt).toLocaleDateString()}</small>
-                  </div>
-                  <div className="projectActions">
-                    <button className="ghostButton" onClick={() => setSelectedProjectId(project.id)} disabled={busy}>
-                      <span>Select</span>
-                    </button>
-                    {project.name !== 'General' && (
-                      <button className="iconButton dangerButton" onClick={() => deleteProject(project)} disabled={busy} title="Delete project">
-                        <Trash2 size={18} />
-                      </button>
-                    )}
-                  </div>
+	                  </div>
+	                  <div className="projectActions">
+	                    <Button variant="subtle" color="gray" onClick={() => setSelectedProjectId(project.id)} disabled={busy}>
+	                      Select
+	                    </Button>
+	                    {project.name !== 'General' && (
+	                      <ActionIcon variant="light" color="red" onClick={() => deleteProject(project)} disabled={busy} title="Delete project">
+	                        <Trash2 size={18} />
+	                      </ActionIcon>
+	                    )}
+	                  </div>
                   </div>
                 ))}
               </div>
@@ -1407,68 +1491,104 @@ export default function App() {
 
         {view === 'memories' && (
           <section className="view">
-            <div className="memoryToolbar surface">
+            <Paper className="memoryToolbar" p="lg" radius="sm" withBorder>
               <div>
                 <h2>{filteredMemories.length} memories</h2>
                 <p>{selectedProject?.name ?? 'General'} project · search decisions, conventions, fixes, and patterns.</p>
               </div>
-              <div className="memorySearch">
-                <Search size={16} />
-                <input value={memorySearch} onChange={(event) => setMemorySearch(event.target.value)} placeholder="Search memories..." />
-              </div>
-              <div className="filterTabs">
-                <button className={memoryFilter === 'all' ? 'active' : ''} onClick={() => setMemoryFilter('all')}>All <span>{memories.length}</span></button>
-                {memoryTypes.map((type) => (
-                  <button className={memoryFilter === type ? 'active' : ''} onClick={() => setMemoryFilter(type)} key={type}>
-                    {memoryLabels[type] ?? type} <span>{memoryCounts.get(type) ?? 0}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+              <TextInput
+                value={memorySearch}
+                onChange={(event) => setMemorySearch(event.currentTarget.value)}
+                placeholder="Search memories..."
+                leftSection={<Search size={16} />}
+              />
+              <SegmentedControl
+                value={memoryFilter}
+                onChange={setMemoryFilter}
+                data={[
+                  { value: 'all', label: `All ${memories.length}` },
+                  ...memoryTypes.map((type) => ({
+                    value: type,
+                    label: `${memoryLabels[type] ?? type} ${memoryCounts.get(type) ?? 0}`,
+                  })),
+                ]}
+              />
+              {filteredMemories.length > 0 && (
+                <Group justify="space-between" gap="sm">
+                  <Text size="sm" c="dimmed">{memoryRangeStart}-{memoryRangeEnd} of {filteredMemories.length}</Text>
+                  <Group gap="sm">
+                    <NativeSelect
+                      value={`${memoryPageSize}`}
+                      onChange={(event) => setMemoryPageSize(Number(event.currentTarget.value))}
+                      aria-label="Memories per page"
+                      data={[
+                        { value: '12', label: '12 / page' },
+                        { value: '24', label: '24 / page' },
+                        { value: '48', label: '48 / page' },
+                      ]}
+                    />
+                    <Pagination
+                      total={memoryPageCount}
+                      value={normalizedMemoryPage}
+                      onChange={setMemoryPage}
+                      size="sm"
+                    />
+                  </Group>
+                </Group>
+              )}
+            </Paper>
 
-            <details className="advancedPanel memoryComposer">
-              <summary>Remember something</summary>
+            <Paper className="memoryComposer" p="lg" radius="sm" withBorder>
               <div className="memoryComposerBody">
                 <div>
                   <h2>Remember for this project</h2>
                   <p>Store rules like coding conventions, architecture decisions, and project-specific preferences.</p>
                 </div>
                 <div className="memoryComposerGrid">
-                  <select value={memoryTypeDraft} onChange={(event) => setMemoryTypeDraft(event.target.value)}>
-                    {memoryTypes.map((type) => <option value={type} key={type}>{memoryLabels[type] ?? type}</option>)}
-                  </select>
-                  <input value={memoryRepositoryDraft} onChange={(event) => setMemoryRepositoryDraft(event.target.value)} placeholder="repository optional" />
-                  <textarea value={memoryContentDraft} onChange={(event) => setMemoryContentDraft(event.target.value)} placeholder="Do not use uppercase UI labels in this project. Prefer sentence case." />
-                  <button onClick={rememberMemory} disabled={busy || !memoryContentDraft.trim()}>Remember</button>
+                  <Select
+                    value={memoryTypeDraft}
+                    onChange={(value) => setMemoryTypeDraft(value ?? 'CodingConvention')}
+                    data={memoryTypes.map((type) => ({ value: type, label: memoryLabels[type] ?? type }))}
+                  />
+                  <TextInput value={memoryRepositoryDraft} onChange={(event) => setMemoryRepositoryDraft(event.currentTarget.value)} placeholder="repository optional" />
+                  <Textarea value={memoryContentDraft} onChange={(event) => setMemoryContentDraft(event.currentTarget.value)} placeholder="Do not use uppercase UI labels in this project. Prefer sentence case." autosize minRows={3} />
+                  <Button onClick={rememberMemory} disabled={busy || !memoryContentDraft.trim()}>Remember</Button>
                 </div>
               </div>
-            </details>
+            </Paper>
 
-            <details className="advancedPanel memoryLinkPanel">
-              <summary>Link existing memory to this project</summary>
+            <Paper className="memoryLinkPanel" p="lg" radius="sm" withBorder>
               <div className="linkRepositoryControls">
-                <select value={memoryToLink} onChange={(event) => setMemoryToLink(event.target.value)}>
-                  <option value="">Select memory</option>
-                  {allMemories
+                <Select
+                  value={memoryToLink}
+                  onChange={(value) => setMemoryToLink(value ?? '')}
+                  placeholder="Select memory"
+                  searchable
+                  data={allMemories
                     .filter((memory) => !memory.projectIds.includes(selectedProjectId))
-                    .map((memory) => (
-                      <option value={memory.id} key={memory.id}>{memoryLabels[memory.type] ?? memory.type}: {memory.content.slice(0, 70)}</option>
-                    ))}
-                </select>
-                <button onClick={linkMemoryToProject} disabled={busy || !memoryToLink}>Link</button>
+                    .map((memory) => ({
+                      value: memory.id,
+                      label: `${memoryLabels[memory.type] ?? memory.type}: ${memory.content.slice(0, 70)}`,
+                    }))}
+                />
+                <Button onClick={linkMemoryToProject} disabled={busy || !memoryToLink}>Link</Button>
               </div>
-            </details>
+            </Paper>
 
             <div className="memoryGrid">
-              {filteredMemories.map((memory) => (
+              {pagedMemories.map((memory) => (
                 <article className="memoryCard" key={memory.id}>
                   <div className="memoryCardHeader">
                     <span className={`memoryType ${memory.type}`}>{memoryLabels[memory.type] ?? memory.type}</span>
-                    <details className="compactMenu">
-                      <summary>More</summary>
-                      <button className="ghostButton" onClick={() => unlinkMemoryFromProject(memory.id)} disabled={busy}>Remove from project</button>
-                      <button className="dangerButton" onClick={() => deleteMemory(memory.id)} disabled={busy}><Trash2 size={16} /><span>Delete memory</span></button>
-                    </details>
+                    <Menu shadow="md" width={190} position="bottom-end">
+                      <Menu.Target>
+                        <Button variant="subtle" size="compact-sm">More</Button>
+                      </Menu.Target>
+                      <Menu.Dropdown>
+                        <Menu.Item onClick={() => unlinkMemoryFromProject(memory.id)} disabled={busy}>Remove from project</Menu.Item>
+                        <Menu.Item color="red" leftSection={<Trash2 size={16} />} onClick={() => deleteMemory(memory.id)} disabled={busy}>Delete memory</Menu.Item>
+                      </Menu.Dropdown>
+                    </Menu>
                   </div>
                   <p>{memory.content}</p>
                   <div className="memoryMeta">
@@ -1482,37 +1602,47 @@ export default function App() {
           </section>
         )}
 
-        {view === 'knowledge' && (
-          <section className="view knowledgeLayout">
-            <section className="surface ingestSurface">
-              <div className="segmented">
-                <button className={ingestMode === 'text' ? 'active' : ''} onClick={() => setIngestMode('text')}><FilePlus2 size={18} />Text</button>
-                <button className={ingestMode === 'upload' ? 'active' : ''} onClick={() => setIngestMode('upload')}><Upload size={18} />File</button>
-              </div>
-              {ingestMode === 'text' ? (
-                <div className="textIngest">
-                  <input value={textTitle} onChange={(event) => setTextTitle(event.target.value)} placeholder="Title" />
-                  <textarea value={textBody} onChange={(event) => setTextBody(event.target.value)} placeholder="Paste notes, snippets, summaries, or any text..." />
-                  <button onClick={addText} disabled={busy || !textBody.trim()}><FilePlus2 size={18} /><span>Add text</span></button>
-                </div>
-              ) : (
-                <label className="dropZone">
-                  <Upload size={28} />
-                  <strong>Choose a PDF, Markdown, or text file</strong>
-                  <span>{selectedProject?.name ?? 'General'}</span>
-                  <input type="file" accept=".pdf,.md,.markdown,.txt,text/plain,application/pdf" onChange={upload} />
-                </label>
-              )}
-            </section>
+	        {view === 'knowledge' && (
+	          <section className="view knowledgeLayout">
+	            <section className="surface ingestSurface">
+	              <SegmentedControl
+	                fullWidth
+	                value={ingestMode}
+	                onChange={(value) => setIngestMode(value as IngestMode)}
+	                data={[
+	                  { value: 'text', label: 'Text' },
+	                  { value: 'upload', label: 'File' },
+	                ]}
+	              />
+	              {ingestMode === 'text' ? (
+	                <div className="textIngest">
+	                  <TextInput value={textTitle} onChange={(event) => setTextTitle(event.target.value)} placeholder="Title" />
+	                  <Textarea value={textBody} onChange={(event) => setTextBody(event.target.value)} placeholder="Paste notes, snippets, summaries, or any text..." minRows={8} autosize />
+	                  <Button onClick={addText} disabled={busy || !textBody.trim()} leftSection={<FilePlus2 size={18} />}>Add text</Button>
+	                </div>
+	              ) : (
+	                <Paper className="dropZone" p="xl" radius="sm" withBorder>
+	                  <Upload size={28} />
+	                  <strong>Choose a PDF, Markdown, or text file</strong>
+	                  <span>{selectedProject?.name ?? 'General'}</span>
+	                  <FileInput
+	                    value={uploadFile}
+	                    onChange={upload}
+	                    accept=".pdf,.md,.markdown,.txt,text/plain,application/pdf"
+	                    placeholder="Select file"
+	                    disabled={busy}
+	                    clearable
+	                    leftSection={<Upload size={16} />}
+	                  />
+	                </Paper>
+	              )}
+	            </section>
 
             <section className="surface">
               <div className="surfaceHeader">
-                <h2>Indexed items</h2>
-                <details className="compactMenu">
-                  <summary>More</summary>
-                  <button className="ghostButton" onClick={reindex} disabled={busy}><RefreshCw size={16} /><span>Reindex</span></button>
-                </details>
-              </div>
+	                <h2>Indexed items</h2>
+	                <Button variant="light" color="gray" onClick={reindex} disabled={busy} leftSection={<RefreshCw size={16} />}>Reindex</Button>
+	              </div>
               <div className="documentList">
                 {documents.map((doc) => (
                   <div className="documentRow" key={doc.id}>
@@ -1521,7 +1651,7 @@ export default function App() {
                       <strong>{doc.name}</strong>
                         <span>{doc.projectName} · {doc.format} · {doc.chunkCount} source units · {(doc.sizeBytes / 1024).toFixed(1)} KB</span>
                     </div>
-                    <button className="iconButton" onClick={() => deleteDocument(doc.id)} disabled={busy} title="Delete document"><Trash2 size={18} /></button>
+	                    <ActionIcon variant="light" color="red" onClick={() => deleteDocument(doc.id)} disabled={busy} title="Delete document"><Trash2 size={18} /></ActionIcon>
                   </div>
                 ))}
                 {documents.length === 0 && <div className="empty richEmpty"><strong>No sources indexed yet</strong><span>Add text, upload a file, or sync a repository so coding agents can retrieve useful context.</span></div>}
@@ -2223,7 +2353,7 @@ export default function App() {
             )}
           </section>
         )}
-      </section>
-    </main>
+      </AppShell.Main>
+    </AppShell>
   );
 }

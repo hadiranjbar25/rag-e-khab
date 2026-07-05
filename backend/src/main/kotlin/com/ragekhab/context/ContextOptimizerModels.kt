@@ -6,7 +6,7 @@ data class ContextOptimizationRequest(
     val repository: String? = null,
     val module: String? = null,
     val maxTokens: Int? = null,
-    val candidateLimit: Int = 30,
+    val candidateLimit: Int? = null,
     val targetTokens: Int? = null,
 )
 

@@ -5,11 +5,24 @@ import com.ragekhab.config.RuntimeSettingsService
 import com.ragekhab.llm.LangChain4jChatClient
 import com.ragekhab.search.SearchResult
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import com.ragekhab.testStateStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class ContextOptimizerServiceTest {
+    @Test
+    fun `request accepts explicit null candidate limit`() {
+        val request = jacksonObjectMapper().readValue<ContextOptimizationRequest>(
+            """{"task":"Fix context optimizer","maxTokens":1200,"candidateLimit":null}""",
+        )
+
+        assertEquals("Fix context optimizer", request.task)
+        assertNull(request.candidateLimit)
+    }
+
     @Test
     fun `retrieval mode selects retrieval optimizer`() {
         val retrieval = FakeModeOptimizer(ContextOptimizerMode.Retrieval, "retrieval-only")
@@ -17,7 +30,7 @@ class ContextOptimizerServiceTest {
         val service = ContextOptimizerService(
             settingsService = RuntimeSettingsService(
                 RagEKhabProperties(optimizer = RagEKhabProperties.Optimizer(mode = "retrieval", maxTokens = 3_000)),
-                ObjectMapper(),
+                testStateStore(),
             ),
             optimizers = listOf(retrieval, compression),
         )
@@ -36,7 +49,7 @@ class ContextOptimizerServiceTest {
         val service = ContextOptimizerService(
             settingsService = RuntimeSettingsService(
                 RagEKhabProperties(optimizer = RagEKhabProperties.Optimizer(mode = "compression", maxTokens = 3_000)),
-                ObjectMapper(),
+                testStateStore(),
             ),
             optimizers = listOf(retrieval, compression),
         )
@@ -54,7 +67,7 @@ class ContextOptimizerServiceTest {
             properties = RagEKhabProperties(localLlm = RagEKhabProperties.LocalLlm(enabled = false)),
             settingsService = RuntimeSettingsService(
                 RagEKhabProperties(localLlm = RagEKhabProperties.LocalLlm(enabled = false)),
-                ObjectMapper(),
+                testStateStore(),
             ),
             mapper = ObjectMapper(),
             chatClient = LangChain4jChatClient(),

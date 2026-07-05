@@ -1,9 +1,7 @@
 package com.ragekhab.config
 
-import com.fasterxml.jackson.databind.ObjectMapper
+import com.ragekhab.storage.AppStateStore
 import org.springframework.stereotype.Service
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicReference
 
 data class OptimizerRuntimeSettings(
@@ -57,9 +55,8 @@ data class UpdateRuntimeSettingsRequest(
 @Service
 class RuntimeSettingsService(
     private val properties: RagEKhabProperties,
-    private val mapper: ObjectMapper,
+    private val state: AppStateStore,
 ) {
-    private val storagePath: Path = Path.of(properties.storageDir).resolve("runtime-settings.json")
     private val settings = AtomicReference(load() ?: defaults())
 
     fun current(): RuntimeSettings = settings.get()
@@ -155,13 +152,14 @@ class RuntimeSettingsService(
             ),
         )
 
-    private fun load(): RuntimeSettings? =
-        if (!Files.exists(storagePath)) null else runCatching {
-            mapper.readValue(Files.readString(storagePath), RuntimeSettings::class.java)
-        }.getOrNull()
+    private fun load(): RuntimeSettings? = state.get(STORE, ID, RuntimeSettings::class.java)
 
     private fun persist(value: RuntimeSettings) {
-        Files.createDirectories(storagePath.parent)
-        Files.writeString(storagePath, mapper.writerWithDefaultPrettyPrinter().writeValueAsString(value))
+        state.put(STORE, ID, value)
+    }
+
+    private companion object {
+        const val STORE = "runtime-settings"
+        const val ID = "current"
     }
 }

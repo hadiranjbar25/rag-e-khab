@@ -15,12 +15,14 @@ class ContextOptimizerService(
     override fun optimize(request: ContextOptimizationRequest): OptimizedContext {
         val settings = settingsService.current()
         val maxTokens = (request.maxTokens ?: request.targetTokens ?: settings.optimizer.maxTokens).coerceIn(300, 8_000)
+        val candidateLimit = (request.candidateLimit ?: 30).coerceIn(8, 30)
         val cacheKey = listOf(
             selectedMode().name,
             request.task.cacheKey(),
             request.repository.orEmpty(),
             request.module.orEmpty(),
             request.projectId.orEmpty(),
+            candidateLimit.toString(),
             maxTokens.toString(),
         ).joinToString("|")
 
