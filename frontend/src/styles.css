@@ -1,5 +1,44 @@
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --app-card-bg: var(--mantine-color-white);
+  --app-card-subtle-bg: var(--mantine-color-gray-0);
+  --app-card-border: var(--mantine-color-gray-3);
+  --app-text: var(--mantine-color-gray-9);
+  --app-muted: var(--mantine-color-gray-7);
+  --app-chip-bg: var(--mantine-color-gray-1);
+  --app-chip-text: var(--mantine-color-gray-8);
+  --app-green-bg: var(--mantine-color-green-0);
+  --app-green-text: var(--mantine-color-green-8);
+  --app-green-border: var(--mantine-color-green-3);
+  --app-red-bg: var(--mantine-color-red-0);
+  --app-red-text: var(--mantine-color-red-8);
+  --app-blue-bg: var(--mantine-color-blue-0);
+  --app-blue-text: var(--mantine-color-blue-8);
+  --app-teal-bg: var(--mantine-color-teal-0);
+  --app-teal-text: var(--mantine-color-teal-8);
+  --app-yellow-bg: var(--mantine-color-yellow-0);
+  --app-yellow-text: var(--mantine-color-yellow-9);
+}
+
+[data-mantine-color-scheme='dark'] {
+  --app-card-bg: var(--mantine-color-dark-7);
+  --app-card-subtle-bg: var(--mantine-color-dark-6);
+  --app-card-border: var(--mantine-color-dark-4);
+  --app-text: var(--mantine-color-dark-0);
+  --app-muted: var(--mantine-color-dark-2);
+  --app-chip-bg: var(--mantine-color-dark-5);
+  --app-chip-text: var(--mantine-color-dark-0);
+  --app-green-bg: rgba(64, 192, 87, 0.12);
+  --app-green-text: var(--mantine-color-green-2);
+  --app-green-border: var(--mantine-color-green-8);
+  --app-red-bg: rgba(250, 82, 82, 0.14);
+  --app-red-text: var(--mantine-color-red-2);
+  --app-blue-bg: rgba(34, 139, 230, 0.14);
+  --app-blue-text: var(--mantine-color-blue-2);
+  --app-teal-bg: rgba(18, 184, 134, 0.14);
+  --app-teal-text: var(--mantine-color-teal-2);
+  --app-yellow-bg: rgba(250, 176, 5, 0.14);
+  --app-yellow-text: var(--mantine-color-yellow-2);
 }
 
 * {
@@ -41,10 +80,6 @@ body {
   padding: var(--mantine-spacing-lg);
 }
 
-.mantineTopbar {
-  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
-}
-
 .loadingBar {
   height: 3px;
   border-radius: 999px;
@@ -65,47 +100,6 @@ body {
 @keyframes loadingSlide {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(280%); }
-}
-
-.surface,
-.sourcePanel,
-.commandPanel,
-.repoToolbar,
-.debugPanel,
-.debugHeader,
-.debugInstruction,
-.settingsPanel,
-.settingsGroup,
-.memoryCard,
-.repoCard,
-.projectCard,
-.metric,
-.turn,
-.empty,
-.activityRow,
-.documentRow,
-.debugRequestCard {
-  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
-  border-radius: var(--mantine-radius-sm);
-  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
-}
-
-.surface,
-.sourcePanel,
-.commandPanel,
-.repoToolbar,
-.debugPanel,
-.debugHeader,
-.debugInstruction,
-.settingsPanel,
-.settingsGroup,
-.memoryCard,
-.repoCard,
-.projectCard,
-.metric,
-.turn,
-.empty {
-  padding: var(--mantine-spacing-md);
 }
 
 .surfaceHeader {
@@ -157,19 +151,19 @@ body {
   max-width: 100%;
   min-height: 26px;
   padding: 0 10px;
-  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  border: 1px solid var(--app-card-border);
   border-radius: 999px;
-  color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0));
-  background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6));
+  color: var(--app-muted);
+  background: var(--app-card-subtle-bg);
   font-size: 0.78rem;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .badge.success {
-  color: light-dark(var(--mantine-color-green-8), var(--mantine-color-green-2));
-  border-color: light-dark(var(--mantine-color-green-3), var(--mantine-color-green-8));
-  background: light-dark(var(--mantine-color-green-0), rgba(64, 192, 87, 0.12));
+  color: var(--app-green-text);
+  border-color: var(--app-green-border);
+  background: var(--app-green-bg);
 }
 
 .statusDot {
@@ -203,7 +197,7 @@ body {
   height: 32px;
   border-radius: var(--mantine-radius-sm);
   color: var(--mantine-color-teal-7);
-  background: light-dark(var(--mantine-color-teal-0), rgba(18, 184, 134, 0.14));
+  background: var(--app-teal-bg);
 }
 
 .metric span,
@@ -283,11 +277,9 @@ body {
 .optimizerHints div,
 .optimizedHero div,
 .adminGrid div {
+  display: grid;
+  gap: 4px;
   min-width: 0;
-  padding: var(--mantine-spacing-sm);
-  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
-  border-radius: var(--mantine-radius-sm);
-  background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6));
 }
 
 .activityRow,
@@ -404,7 +396,7 @@ body {
 }
 
 .debugControls {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
 }
 
 .memoryToolbar,
@@ -480,30 +472,30 @@ body {
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 700;
-  background: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5));
-  color: light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-0));
+  background: var(--app-chip-bg);
+  color: var(--app-chip-text);
 }
 
 .memoryType.BugFix {
-  background: light-dark(var(--mantine-color-red-0), rgba(250, 82, 82, 0.14));
-  color: light-dark(var(--mantine-color-red-8), var(--mantine-color-red-2));
+  background: var(--app-red-bg);
+  color: var(--app-red-text);
 }
 
 .memoryType.CodingConvention {
-  background: light-dark(var(--mantine-color-blue-0), rgba(34, 139, 230, 0.14));
-  color: light-dark(var(--mantine-color-blue-8), var(--mantine-color-blue-2));
+  background: var(--app-blue-bg);
+  color: var(--app-blue-text);
 }
 
 .memoryType.Pattern,
 .memoryType.ProjectKnowledge,
 .memoryType.DomainKnowledge {
-  background: light-dark(var(--mantine-color-teal-0), rgba(18, 184, 134, 0.14));
-  color: light-dark(var(--mantine-color-teal-8), var(--mantine-color-teal-2));
+  background: var(--app-teal-bg);
+  color: var(--app-teal-text);
 }
 
 .memoryType.TechnicalDebt {
-  background: light-dark(var(--mantine-color-yellow-0), rgba(250, 176, 5, 0.14));
-  color: light-dark(var(--mantine-color-yellow-9), var(--mantine-color-yellow-2));
+  background: var(--app-yellow-bg);
+  color: var(--app-yellow-text);
 }
 
 .dropZone {
@@ -545,10 +537,10 @@ body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: var(--mantine-spacing-sm);
-  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  border: 1px solid var(--app-card-border);
   border-radius: var(--mantine-radius-sm);
-  background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6));
-  color: light-dark(var(--mantine-color-gray-8), var(--mantine-color-dark-0));
+  background: var(--app-card-subtle-bg);
+  color: var(--app-text);
   line-height: 1.5;
 }
 
@@ -567,7 +559,6 @@ body {
 .debugRequestCard {
   display: grid;
   gap: var(--mantine-spacing-sm);
-  padding: var(--mantine-spacing-md);
 }
 
 .debugRequestHeader,
@@ -591,7 +582,7 @@ body {
   gap: var(--mantine-spacing-sm);
   min-width: 720px;
   padding: var(--mantine-spacing-xs) 0;
-  border-bottom: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  border-bottom: 1px solid var(--app-card-border);
 }
 
 .debugTableHead {
@@ -620,7 +611,6 @@ body {
   display: grid;
   gap: 4px;
   min-height: 70px;
-  padding: var(--mantine-spacing-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -633,7 +623,6 @@ body {
 .settingsGroup summary {
   padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
   border-radius: var(--mantine-radius-sm);
-  background: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6));
 }
 
 .settingsGroup .settingsGrid,
@@ -656,8 +645,8 @@ body {
 .settingHint {
   padding: var(--mantine-spacing-sm);
   border-radius: var(--mantine-radius-sm);
-  background: light-dark(var(--mantine-color-yellow-0), rgba(250, 176, 5, 0.12));
-  color: light-dark(var(--mantine-color-yellow-9), var(--mantine-color-yellow-2));
+  background: var(--app-yellow-bg);
+  color: var(--app-yellow-text);
 }
 
 .toastStack {
@@ -676,9 +665,9 @@ body {
   gap: var(--mantine-spacing-sm);
   align-items: start;
   padding: var(--mantine-spacing-sm);
-  border: 1px solid light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  border: 1px solid var(--app-card-border);
   border-radius: var(--mantine-radius-sm);
-  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+  background: var(--app-card-bg);
   box-shadow: var(--mantine-shadow-md);
 }
 
@@ -707,7 +696,7 @@ body {
 }
 
 .richEmpty strong {
-  color: light-dark(var(--mantine-color-gray-9), var(--mantine-color-dark-0));
+  color: var(--app-text);
 }
 
 @media (max-width: 1100px) {

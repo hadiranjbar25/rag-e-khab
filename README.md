@@ -62,7 +62,7 @@ flowchart TD
 - Deterministic debug token mappings such as `USER_001`, `ORDER_001`, `EMAIL_001`, and `PHONE_001` scoped to a session.
 - Structured Claude debug data requests through MCP, shown in the UI as developer tasks with private token resolution and suggested SQL.
 - Human-approved promotion from Safe Debug Sessions into long-term Memory for sanitized lessons learned.
-- Local-first JSON persistence for memories, runtime settings, repository catalog data, and Safe Debug Sessions.
+- Local-first Postgres persistence for memories, runtime settings, repository catalog data, and Safe Debug Sessions.
 
 ## Run
 
@@ -151,17 +151,30 @@ OpenAPI docs are generated for REST endpoints under `/api/**`:
 
 ## Safe Debug Sessions
 
-Safe Debug Sessions let a developer paste production-like CSV, JSON, or log output locally, sanitize it, and share only sanitized artifacts with Claude.
+Safe Debug Sessions are the debugger workspace for production-like investigations. They let a developer paste CSV, JSON, or log output locally, sanitize it, and share only the sanitized artifact with Claude or another MCP agent.
 
 Core behavior:
 
 - Raw pasted data is processed locally by the sanitize endpoint and is not persisted as an artifact.
-- Sensitive values are masked or tokenized.
-- Token mappings are deterministic inside a session, so the same real `users.id` continues to map to the same fake `USER_001`.
-- Sanitized artifacts, warnings, notes, audit events, and token mappings are stored locally.
-- Claude can create structured data requests through MCP instead of asking for more raw data in chat.
+- Sensitive values are tokenized into stable fake values such as `USER_001`, `EMAIL_001`, `PERSON_001`, `ADDRESS_001`, `SECRET_001`, and `SSN_001`.
+- Token mappings are deterministic inside a session, so the same real value keeps the same token across follow-up artifacts.
+- Sanitized artifacts, warning summaries, developer notes, audit events, data requests, and token mappings are stored locally.
+- Agents can inspect sanitized artifacts and request more data through MCP without receiving raw production data.
 - The UI resolves fake tokens back to real IDs privately and can suggest SQL for the developer to run manually.
 - Suggested SQL with real IDs is generated only in the developer UI and is not returned by MCP.
+- Memory promotion is explicit and guarded so temporary debug data does not become durable project memory.
+
+Sanitizer modes:
+
+- `Balanced` is the default. It masks high-confidence PII and secrets, replaces labelled names and addresses in free text, and sanitizes inside risky text fields like notes and comments while preserving surrounding structure.
+- `Strict` is for high-risk artifacts. It additionally tokenizes lower-confidence names, UUID-like values, IP addresses, and birth-date-like values.
+- `Permissive` is for already-minimized data. It masks high-confidence values such as emails, phones, cards, IBANs, SSNs, and secrets, but only warns about lower-confidence names and addresses.
+
+Detected data:
+
+- Structured identifiers from known tables and common field names, including fuzzy names such as `customerEmail`, `fullName`, `apiToken`, `billingAddress`, and `userId`.
+- Emails, phone numbers, person names, street addresses, payment-card-like values, IBANs, SSN-like values, JWT-like values, and API-key-like secrets.
+- PII inside free-text logs and risky fields such as `note`, `comment`, and `description`.
 
 Typical workflow:
 
@@ -172,6 +185,13 @@ Typical workflow:
 5. The developer sees the pending request, copies privately generated SQL, queries manually, pastes the result, and links the new artifact to the request.
 6. The request is marked completed or rejected.
 7. When the bug is understood, the developer promotes a sanitized durable lesson to Memory.
+
+MCP debugger tools:
+
+- `list_debug_sessions` shows available sessions.
+- `get_debug_session_state` returns sanitized artifacts, safe data requests, notes, and timeline entries.
+- `create_debug_data_request` records a structured follow-up request with `entity`, optional `relation`, optional `parentToken`, `reason`, and `requestedFields`.
+- Token resolution through MCP is intentionally limited to database identifiers. PII tokens remain resolvable only in the local UI.
 
 ### Debug Session to Memory
 
