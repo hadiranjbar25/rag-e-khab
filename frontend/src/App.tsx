@@ -14,6 +14,7 @@ import {
   Menu,
   NavLink,
   NativeSelect,
+  NumberInput,
   Paper,
   Pagination,
   ScrollArea,
@@ -1223,9 +1224,9 @@ export default function App() {
                 <strong>{toast.title}</strong>
                 {toast.message && <span>{toast.message}</span>}
               </div>
-              <button className="toastClose" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">
+              <ActionIcon variant="subtle" color="gray" className="toastClose" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">
                 <X size={15} />
-              </button>
+              </ActionIcon>
             </div>
           );
         })}
@@ -1503,6 +1504,7 @@ export default function App() {
                 leftSection={<Search size={16} />}
               />
               <SegmentedControl
+                className="memoryFilterTabs"
                 value={memoryFilter}
                 onChange={setMemoryFilter}
                 data={[
@@ -1661,12 +1663,12 @@ export default function App() {
         )}
 
         {view === 'safeDebug' && (
-          <section className="view safeDebugLayout">
-            <section className="safeDebugColumn">
-              <div className="safeDebugCreate">
-                <input value={debugTitle} onChange={(event) => setDebugTitle(event.target.value)} placeholder="BUG-123 or checkout failure" />
-                <button onClick={createDebugSession} disabled={busy || !debugTitle.trim()} title="Create session"><Plus size={18} /><span>Create</span></button>
-              </div>
+	          <section className="view safeDebugLayout">
+	            <section className="safeDebugColumn">
+	              <div className="safeDebugCreate">
+	                <TextInput value={debugTitle} onChange={(event) => setDebugTitle(event.target.value)} placeholder="BUG-123 or checkout failure" />
+	                <Button onClick={createDebugSession} disabled={busy || !debugTitle.trim()} title="Create session" leftSection={<Plus size={18} />}>Create</Button>
+	              </div>
 
               <section className="debugList">
                 <div className="surfaceHeader">
@@ -1681,21 +1683,21 @@ export default function App() {
                       <small>Created {new Date(session.createdAt).toLocaleString()}</small>
                       <small>Updated {new Date(session.updatedAt).toLocaleString()}</small>
                     </div>
-                    <span className={session.status === 'active' ? 'badge success' : 'badge'}>{session.status}</span>
-                    <div className="debugRowActions">
-                      <button className="ghostButton" onClick={() => openDebugSession(session.id)} disabled={busy}>Open</button>
-                      <button className="iconButton" onClick={() => archiveDebugSession(session.id)} disabled={busy} title="Archive session"><Archive size={17} /></button>
-                    </div>
+	                    <span className={session.status === 'active' ? 'badge success' : 'badge'}>{session.status}</span>
+	                    <div className="debugRowActions">
+	                      <Button variant="subtle" color="gray" onClick={() => openDebugSession(session.id)} disabled={busy}>Open</Button>
+	                      <ActionIcon variant="light" color="gray" onClick={() => archiveDebugSession(session.id)} disabled={busy} title="Archive session"><Archive size={17} /></ActionIcon>
+	                    </div>
                   </article>
                 ))}
                 {debugSessions.length === 0 && <div className="empty richEmpty"><strong>No debug sessions</strong><span>Create a session before pasting query output. Raw pasted data stays local to the sanitize request and is not stored.</span></div>}
               </section>
 
-              <section className="debugInstruction">
-                <div className="surfaceHeader">
-                  <h2>Claude instruction</h2>
-                  <button className="iconButton" onClick={() => copyDebugText(safeDebugInstruction)} title="Copy instruction"><Copy size={17} /></button>
-                </div>
+	              <section className="debugInstruction">
+	                <div className="surfaceHeader">
+	                  <h2>Claude instruction</h2>
+	                  <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(safeDebugInstruction)} title="Copy instruction"><Copy size={17} /></ActionIcon>
+	                </div>
                 <pre>{safeDebugInstruction}</pre>
               </section>
             </section>
@@ -1735,13 +1737,13 @@ export default function App() {
                             </div>
                             <p>{item.reason}</p>
                             {item.requestedFields.length > 0 && <small>Fields: {item.requestedFields.join(', ')}</small>}
-                            {mapping && <small>{item.parentToken} -&gt; {mapping.table}.{mapping.column} = {mapping.realValue}</small>}
-                            {suggestedSql && <pre>{suggestedSql}</pre>}
-                            <div className="debugRequestActions">
-                              <button className="ghostButton" onClick={() => copyDebugText(suggestedSql)} disabled={!suggestedSql}><Copy size={16} /><span>Copy SQL</span></button>
-                              <button className="ghostButton" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</button>
-                              <button className="dangerButton" onClick={() => updateDebugDataRequest(item.id, 'reject')} disabled={busy || item.status !== 'pending'}>Reject</button>
-                            </div>
+	                            {mapping && <small>{item.parentToken} -&gt; {mapping.table}.{mapping.column} = {mapping.realValue}</small>}
+	                            {suggestedSql && <pre>{suggestedSql}</pre>}
+	                            <div className="debugRequestActions">
+	                              <Button variant="subtle" color="gray" onClick={() => copyDebugText(suggestedSql)} disabled={!suggestedSql} leftSection={<Copy size={16} />}>Copy SQL</Button>
+	                              <Button variant="light" color="teal" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</Button>
+	                              <Button variant="light" color="red" onClick={() => updateDebugDataRequest(item.id, 'reject')} disabled={busy || item.status !== 'pending'}>Reject</Button>
+	                            </div>
                           </article>
                         );
                       })}
@@ -1755,31 +1757,37 @@ export default function App() {
                         <h2>Paste data</h2>
                         <ShieldCheck size={18} />
                       </div>
-                      <textarea value={debugRawText} onChange={(event) => setDebugRawText(event.target.value)} placeholder="Paste CSV, JSON, or log output here..." />
-                      <div className="debugControls">
-                        <select value={debugInputType} onChange={(event) => setDebugInputType(event.target.value as DebugInputType)}>
-                          <option value="csv">CSV</option>
-                          <option value="json">JSON</option>
-                          <option value="log">LOG</option>
-                        </select>
-                        <input value={debugSourceName} onChange={(event) => setDebugSourceName(event.target.value)} placeholder="users, orders, payments, custom" />
-                        <button onClick={sanitizeDebugData} disabled={busy || !debugRawText.trim()}><ShieldCheck size={18} /><span>Sanitize</span></button>
-                      </div>
-                      <select className="debugRequestSelect" value={debugDataRequestId} onChange={(event) => setDebugDataRequestId(event.target.value)}>
-                        <option value="">No linked Claude request</option>
-                        {pendingDebugRequests.map((item) => (
-                          <option value={item.id} key={item.id}>{item.entity}{item.parentToken ? ` for ${item.parentToken}` : ''}</option>
-                        ))}
-                      </select>
+	                      <Textarea value={debugRawText} onChange={(event) => setDebugRawText(event.target.value)} placeholder="Paste CSV, JSON, or log output here..." minRows={8} autosize />
+	                      <div className="debugControls">
+	                        <NativeSelect value={debugInputType} onChange={(event) => setDebugInputType(event.target.value as DebugInputType)} data={[
+	                          { value: 'csv', label: 'CSV' },
+	                          { value: 'json', label: 'JSON' },
+	                          { value: 'log', label: 'LOG' },
+	                        ]} />
+	                        <TextInput value={debugSourceName} onChange={(event) => setDebugSourceName(event.target.value)} placeholder="users, orders, payments, custom" />
+	                        <Button onClick={sanitizeDebugData} disabled={busy || !debugRawText.trim()} leftSection={<ShieldCheck size={18} />}>Sanitize</Button>
+	                      </div>
+	                      <NativeSelect
+	                        className="debugRequestSelect"
+	                        value={debugDataRequestId}
+	                        onChange={(event) => setDebugDataRequestId(event.target.value)}
+	                        data={[
+	                          { value: '', label: 'No linked Claude request' },
+	                          ...pendingDebugRequests.map((item) => ({
+	                            value: item.id,
+	                            label: `${item.entity}${item.parentToken ? ` for ${item.parentToken}` : ''}`,
+	                          })),
+	                        ]}
+	                      />
                     </div>
 
                     <div className="debugPanel">
                       <div className="surfaceHeader">
-                        <h2>Sanitized output</h2>
-                        <div className="debugInlineActions">
-                          <button className="iconButton" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText} title="Copy sanitized output"><Clipboard size={17} /></button>
-                          <button className="ghostButton" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText}>Save artifact</button>
-                        </div>
+	                        <h2>Sanitized output</h2>
+	                        <div className="debugInlineActions">
+	                          <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText} title="Copy sanitized output"><Clipboard size={17} /></ActionIcon>
+	                          <Button variant="subtle" color="gray" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText}>Save artifact</Button>
+	                        </div>
                       </div>
                       <pre className="debugOutput">{debugSanitizedText || 'Sanitized data will appear here.'}</pre>
                     </div>
@@ -1790,16 +1798,16 @@ export default function App() {
                       <div className="surfaceHeader">
                         <h2>Resolve token</h2>
                         <KeyRound size={18} />
-                      </div>
-                      <div className="debugResolve">
-                        <input value={debugTokenQuery} onChange={(event) => setDebugTokenQuery(event.target.value)} placeholder="USER_001" />
-                        <button onClick={resolveDebugToken} disabled={busy || !debugTokenQuery.trim()}>Resolve</button>
-                      </div>
+	                      </div>
+	                      <div className="debugResolve">
+	                        <TextInput value={debugTokenQuery} onChange={(event) => setDebugTokenQuery(event.target.value)} placeholder="USER_001" />
+	                        <Button onClick={resolveDebugToken} disabled={busy || !debugTokenQuery.trim()}>Resolve</Button>
+	                      </div>
                       {debugResolvedToken ? (
                         <div className="resolvedToken">
-                          <span>{debugResolvedToken.token}</span>
-                          <strong>{debugResolvedToken.table}.{debugResolvedToken.column} = {debugResolvedToken.realValue}</strong>
-                          <button className="ghostButton" onClick={() => copyDebugText(debugResolvedToken.realValue)}><Copy size={16} /><span>Copy real id</span></button>
+	                          <span>{debugResolvedToken.token}</span>
+	                          <strong>{debugResolvedToken.table}.{debugResolvedToken.column} = {debugResolvedToken.realValue}</strong>
+	                          <Button variant="subtle" color="gray" onClick={() => copyDebugText(debugResolvedToken.realValue)} leftSection={<Copy size={16} />}>Copy real id</Button>
                         </div>
                       ) : (
                         <div className="empty">Resolve a token to manually query the database without asking Claude for raw data.</div>
@@ -1810,11 +1818,11 @@ export default function App() {
                       <div className="surfaceHeader">
                         <h2>Claude requests</h2>
                         <span>{debugDetail.notes.length}</span>
-                      </div>
-                      <div className="debugResolve">
-                        <input value={claudeRequestDraft} onChange={(event) => setClaudeRequestDraft(event.target.value)} placeholder="Need orders for USER_001" />
-                        <button onClick={recordClaudeRequest} disabled={busy || !claudeRequestDraft.trim()}>Record</button>
-                      </div>
+	                      </div>
+	                      <div className="debugResolve">
+	                        <TextInput value={claudeRequestDraft} onChange={(event) => setClaudeRequestDraft(event.target.value)} placeholder="Need orders for USER_001" />
+	                        <Button onClick={recordClaudeRequest} disabled={busy || !claudeRequestDraft.trim()}>Record</Button>
+	                      </div>
                       <div className="debugMiniList">
                         {debugDetail.notes.slice(0, 4).map((note) => (
                           <div key={note.id}><strong>{note.request}</strong><span>{new Date(note.createdAt).toLocaleString()}</span></div>
@@ -1830,26 +1838,24 @@ export default function App() {
                         <span>Save only durable, sanitized conclusions. Tokens, raw IDs, PII, and SQL with real IDs are blocked.</span>
                       </div>
                       <Brain size={18} />
-                    </div>
-                    <div className="promoteMemoryGrid">
-                      <select value={debugMemoryTypeDraft} onChange={(event) => setDebugMemoryTypeDraft(event.target.value)}>
-                        {memoryTypes.map((type) => <option value={type} key={type}>{memoryLabels[type] ?? type}</option>)}
-                      </select>
-                      <input value={debugMemoryRepositoryDraft} onChange={(event) => setDebugMemoryRepositoryDraft(event.target.value)} placeholder="repository optional" />
-                      <input value={debugMemoryModuleDraft} onChange={(event) => setDebugMemoryModuleDraft(event.target.value)} placeholder="module optional" />
-                      <input type="number" min="0" max="1" step="0.05" value={debugMemoryConfidenceDraft} onChange={(event) => setDebugMemoryConfidenceDraft(Number(event.target.value))} />
-                      <textarea value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." />
-                      <button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim()}><Brain size={18} /><span>Promote</span></button>
-                    </div>
+	                    </div>
+	                    <div className="promoteMemoryGrid">
+	                      <NativeSelect value={debugMemoryTypeDraft} onChange={(event) => setDebugMemoryTypeDraft(event.target.value)} data={memoryTypes.map((type) => ({ value: type, label: memoryLabels[type] ?? type }))} />
+	                      <TextInput value={debugMemoryRepositoryDraft} onChange={(event) => setDebugMemoryRepositoryDraft(event.target.value)} placeholder="repository optional" />
+	                      <TextInput value={debugMemoryModuleDraft} onChange={(event) => setDebugMemoryModuleDraft(event.target.value)} placeholder="module optional" />
+	                      <NumberInput min={0} max={1} step={0.05} value={debugMemoryConfidenceDraft} onChange={(value) => setDebugMemoryConfidenceDraft(Number(value) || 0)} />
+	                      <Textarea value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." minRows={4} autosize />
+	                      <Button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim()} leftSection={<Brain size={18} />}>Promote</Button>
+	                    </div>
                   </section>
 
                   <section className="debugPanel">
                     <div className="surfaceHeader">
-                      <h2>Token map</h2>
-                      <div className="memorySearch debugSearch">
-                        <Search size={16} />
-                        <input value={debugTokenSearch} onChange={(event) => setDebugTokenSearch(event.target.value)} placeholder="Search tokens..." />
-                      </div>
+	                      <h2>Token map</h2>
+	                      <div className="memorySearch debugSearch">
+	                        <Search size={16} />
+	                        <TextInput value={debugTokenSearch} onChange={(event) => setDebugTokenSearch(event.target.value)} placeholder="Search tokens..." variant="unstyled" />
+	                      </div>
                     </div>
                     <div className="debugTable">
                       <div className="debugTableHead">
@@ -1883,11 +1889,11 @@ export default function App() {
                           <article key={artifact.id}>
                             <div>
                               <strong>{artifact.inputType.toUpperCase()} · {artifact.sourceName}</strong>
-                              <span>{new Date(artifact.createdAt).toLocaleString()}</span>
-                              <small>{artifact.warningSummary.length} warning group(s)</small>
-                            </div>
-                            <button className="iconButton" onClick={() => copyDebugText(artifact.sanitizedText, artifact.id)} title="Copy artifact"><Copy size={17} /></button>
-                          </article>
+	                              <span>{new Date(artifact.createdAt).toLocaleString()}</span>
+	                              <small>{artifact.warningSummary.length} warning group(s)</small>
+	                            </div>
+	                            <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(artifact.sanitizedText, artifact.id)} title="Copy artifact"><Copy size={17} /></ActionIcon>
+	                          </article>
                         ))}
                         {debugDetail.artifacts.length === 0 && <div className="empty">No sanitized artifacts saved yet.</div>}
                       </div>
@@ -1924,11 +1930,11 @@ export default function App() {
                 <div>
                   <span className="eyebrow">MCP tool: optimize_context</span>
                   <h2>Task in, smallest useful context out.</h2>
-                </div>
-                <Sparkles size={18} />
-              </div>
-              <textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Add pagination to Orders API" />
-              <button onClick={optimizeContext} disabled={busy || !task.trim()}><Sparkles size={18} /><span>Optimize context</span></button>
+	                </div>
+	                <Sparkles size={18} />
+	              </div>
+	              <Textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Add pagination to Orders API" minRows={7} autosize />
+	              <Button onClick={optimizeContext} disabled={busy || !task.trim()} leftSection={<Sparkles size={18} />}>Optimize context</Button>
               <div className="optimizerHints">
                 <div><span>Mode</span><strong>{settingsDraft?.optimizer.mode ?? 'retrieval'}</strong></div>
                 <div><span>Budget</span><strong>{settingsDraft?.optimizer.maxTokens ?? 3000} tokens</strong></div>
@@ -1982,12 +1988,12 @@ export default function App() {
         )}
 
         {view === 'chat' && (
-          <section className="chatLayout">
-            <section className="surface chatSurface">
-              <div className="composer">
-                <textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask your knowledge base..." />
-                <button onClick={() => ask()} disabled={busy || !question.trim()} title="Send question"><Send size={18} /></button>
-              </div>
+	          <section className="chatLayout">
+	            <section className="surface chatSurface">
+	              <div className="composer">
+	                <Textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask your knowledge base..." minRows={4} autosize />
+	                <ActionIcon size="xl" onClick={() => ask()} disabled={busy || !question.trim()} title="Send question"><Send size={18} /></ActionIcon>
+	              </div>
               <div className="answers">
                 {history.map((turn) => (
                   <article className="turn" key={turn.id}>
@@ -1995,14 +2001,14 @@ export default function App() {
                     <div className="answerBubble">
                       <div className="answerMeta">{turn.response.provider} - {new Date(turn.response.createdAt).toLocaleString()}</div>
                       <p>{turn.response.answer}</p>
-                      <div className="sources">
-                        {turn.response.sources.map((source) => (
-                          <button className="sourceCard" onClick={() => setActiveSource(source)} key={source.chunkId}>
-                            <strong>{source.documentName}</strong>
-                            <span>{source.pageNumber ? `page ${source.pageNumber}` : 'text'} - score {source.score.toFixed(2)}</span>
-                          </button>
-                        ))}
-                      </div>
+	                      <div className="sources">
+	                        {turn.response.sources.map((source) => (
+	                          <Paper component="button" className="sourceCard" onClick={() => setActiveSource(source)} key={source.chunkId}>
+	                            <strong>{source.documentName}</strong>
+	                            <span>{source.pageNumber ? `page ${source.pageNumber}` : 'text'} - score {source.score.toFixed(2)}</span>
+	                          </Paper>
+	                        ))}
+	                      </div>
                     </div>
                   </article>
                 ))}
@@ -2032,53 +2038,46 @@ export default function App() {
         {view === 'settings' && (
           <section className="view">
             {settingsDraft && (
-              <section className="surface settingsPanel">
-                <div className="surfaceHeader">
-                  <h2>Settings</h2>
-                  <button onClick={saveSettings} disabled={busy}>Save</button>
-                </div>
+	              <section className="surface settingsPanel">
+	                <div className="surfaceHeader">
+	                  <h2>Settings</h2>
+	                  <Button onClick={saveSettings} disabled={busy}>Save</Button>
+	                </div>
                 <div className="settingsSections">
                   <details className="settingsGroup" open>
                     <summary>Models</summary>
                     <div className="settingsGrid">
-                  <label>
-                    <span>Chat provider</span>
-                    <select
-                      value={settingsDraft.llm.provider}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        llm: { ...settingsDraft.llm, provider: event.target.value }
-                      })}
-                    >
-                      {status?.availableProviders.map((provider) => (
-                        <option value={provider} key={provider}>{provider}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span>Chat model</span>
-                    <select
-                      value={selectValue(settingsDraft.llm.model, chatModelOptions)}
-                      onChange={(event) => {
-                        const value = event.target.value;
+	                  <label>
+	                    <span>Chat provider</span>
+	                    <NativeSelect
+	                      value={settingsDraft.llm.provider}
+	                      onChange={(event) => setSettingsDraft({
+	                        ...settingsDraft,
+	                        llm: { ...settingsDraft.llm, provider: event.target.value }
+	                      })}
+	                      data={(status?.availableProviders ?? []).map((provider) => ({ value: provider, label: provider }))}
+	                    />
+	                  </label>
+	                  <label>
+	                    <span>Chat model</span>
+	                    <NativeSelect
+	                      value={selectValue(settingsDraft.llm.model, chatModelOptions)}
+	                      onChange={(event) => {
+	                        const value = event.target.value;
                         setSettingsDraft({
                           ...settingsDraft,
-                          llm: { ...settingsDraft.llm, model: value === CUSTOM_MODEL ? '' : value }
-                        });
-                      }}
-                    >
-                      {chatModelOptions.map((model) => (
-                        <option value={model} key={model}>{model}</option>
-                      ))}
-                      <option value={CUSTOM_MODEL}>custom</option>
-                    </select>
-                  </label>
-                  {selectValue(settingsDraft.llm.model, chatModelOptions) === CUSTOM_MODEL && (
-                    <label>
-                      <span>Custom chat model</span>
-                      <input
-                        value={settingsDraft.llm.model}
-                        placeholder="model name"
+	                          llm: { ...settingsDraft.llm, model: value === CUSTOM_MODEL ? '' : value }
+	                        });
+	                      }}
+	                      data={[...chatModelOptions.map((model) => ({ value: model, label: model })), { value: CUSTOM_MODEL, label: 'custom' }]}
+	                    />
+	                  </label>
+	                  {selectValue(settingsDraft.llm.model, chatModelOptions) === CUSTOM_MODEL && (
+	                    <label>
+	                      <span>Custom chat model</span>
+	                      <TextInput
+	                        value={settingsDraft.llm.model}
+	                        placeholder="model name"
                         onChange={(event) => setSettingsDraft({
                           ...settingsDraft,
                           llm: { ...settingsDraft.llm, model: event.target.value }
@@ -2086,20 +2085,20 @@ export default function App() {
                       />
                     </label>
                   )}
-                  <label>
-                    <span>Chat base URL</span>
-                    <input
-                      value={settingsDraft.llm.baseUrl}
+	                  <label>
+	                    <span>Chat base URL</span>
+	                    <TextInput
+	                      value={settingsDraft.llm.baseUrl}
                       onChange={(event) => setSettingsDraft({
                         ...settingsDraft,
                         llm: { ...settingsDraft.llm, baseUrl: event.target.value }
                       })}
                     />
                   </label>
-                  <label>
-                    <span>Chat API key</span>
-                    <input
-                      type="password"
+	                  <label>
+	                    <span>Chat API key</span>
+	                    <TextInput
+	                      type="password"
                       value={settingsDraft.llm.apiKey}
                       onChange={(event) => setSettingsDraft({
                         ...settingsDraft,
@@ -2112,72 +2111,69 @@ export default function App() {
                   <details className="settingsGroup">
                     <summary>Optimizer</summary>
                     <div className="settingsGrid">
-                  <label>
-                    <span>Optimizer mode</span>
-                    <select
-                      value={settingsDraft.optimizer.mode}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        optimizer: { ...settingsDraft.optimizer, mode: event.target.value }
-                      })}
-                    >
-                      <option value="retrieval">Retrieval only</option>
-                      <option value="compression" disabled={!settingsDraft.localLlm.enabled}>Compression</option>
-                    </select>
-                    {!settingsDraft.localLlm.enabled && <small className="settingHint">Enable local LLM compression to use compression mode.</small>}
-                  </label>
-                  <label>
-                    <span>Optimizer max tokens</span>
-                    <input
-                      type="number"
-                      min="300"
-                      max="8000"
-                      value={settingsDraft.optimizer.maxTokens}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        optimizer: { ...settingsDraft.optimizer, maxTokens: Number(event.target.value) }
-                      })}
-                    />
-                  </label>
-                  <label className="toggleRow">
-                    <input
-                      type="checkbox"
-                      checked={settingsDraft.localLlm.enabled}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        optimizer: event.target.checked ? settingsDraft.optimizer : { ...settingsDraft.optimizer, mode: 'retrieval' },
-                        localLlm: { ...settingsDraft.localLlm, enabled: event.target.checked }
-                      })}
-                    />
-                      <span>Enable local LLM compression</span>
-                  </label>
-                  <label>
-                    <span>Local LLM provider</span>
-                    <select
-                      value={settingsDraft.localLlm.provider}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        localLlm: { ...settingsDraft.localLlm, provider: event.target.value }
-                      })}
-                    >
-                      <option value="ollama">Ollama</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Local LLM base URL</span>
-                    <input
-                      value={settingsDraft.localLlm.baseUrl}
+	                  <label>
+	                    <span>Optimizer mode</span>
+	                    <NativeSelect
+	                      value={settingsDraft.optimizer.mode}
+	                      onChange={(event) => setSettingsDraft({
+	                        ...settingsDraft,
+	                        optimizer: { ...settingsDraft.optimizer, mode: event.target.value }
+	                      })}
+	                      data={[
+	                        { value: 'retrieval', label: 'Retrieval only' },
+	                        { value: 'compression', label: 'Compression', disabled: !settingsDraft.localLlm.enabled },
+	                      ]}
+	                    />
+	                    {!settingsDraft.localLlm.enabled && <small className="settingHint">Enable local LLM compression to use compression mode.</small>}
+	                  </label>
+	                  <label>
+	                    <span>Optimizer max tokens</span>
+	                    <NumberInput
+	                      min={300}
+	                      max={8000}
+	                      value={settingsDraft.optimizer.maxTokens}
+	                      onChange={(value) => setSettingsDraft({
+	                        ...settingsDraft,
+	                        optimizer: { ...settingsDraft.optimizer, maxTokens: Number(value) || 300 }
+	                      })}
+	                    />
+	                  </label>
+	                  <Checkbox
+	                    className="toggleRow"
+	                      checked={settingsDraft.localLlm.enabled}
+	                      onChange={(event) => setSettingsDraft({
+	                        ...settingsDraft,
+	                        optimizer: event.currentTarget.checked ? settingsDraft.optimizer : { ...settingsDraft.optimizer, mode: 'retrieval' },
+	                        localLlm: { ...settingsDraft.localLlm, enabled: event.currentTarget.checked }
+	                      })}
+	                    label="Enable local LLM compression"
+	                  />
+	                  <label>
+	                    <span>Local LLM provider</span>
+	                    <NativeSelect
+	                      value={settingsDraft.localLlm.provider}
+	                      onChange={(event) => setSettingsDraft({
+	                        ...settingsDraft,
+	                        localLlm: { ...settingsDraft.localLlm, provider: event.target.value }
+	                      })}
+	                      data={[{ value: 'ollama', label: 'Ollama' }]}
+	                    />
+	                  </label>
+	                  <label>
+	                    <span>Local LLM base URL</span>
+	                    <TextInput
+	                      value={settingsDraft.localLlm.baseUrl}
                       onChange={(event) => setSettingsDraft({
                         ...settingsDraft,
                         localLlm: { ...settingsDraft.localLlm, baseUrl: event.target.value }
                       })}
                     />
                   </label>
-                  <label>
-                    <span>Compression model</span>
-                    <select
-                      value={!settingsDraft.localLlm.enabled ? DISABLED_MODEL : selectValue(settingsDraft.localLlm.model, compressionModelOptions)}
-                      disabled={settingsDraft.optimizer.mode === 'retrieval'}
+	                  <label>
+	                    <span>Compression model</span>
+	                    <NativeSelect
+	                      value={!settingsDraft.localLlm.enabled ? DISABLED_MODEL : selectValue(settingsDraft.localLlm.model, compressionModelOptions)}
+	                      disabled={settingsDraft.optimizer.mode === 'retrieval'}
                       onChange={(event) => {
                         const value = event.target.value;
                         setSettingsDraft({
@@ -2187,22 +2183,21 @@ export default function App() {
                             ...settingsDraft.localLlm,
                             enabled: value !== DISABLED_MODEL,
                             model: value === CUSTOM_MODEL ? '' : value === DISABLED_MODEL ? settingsDraft.localLlm.model : value
-                          }
-                        });
-                      }}
-                    >
-                      <option value={DISABLED_MODEL}>disabled</option>
-                      {compressionModelOptions.map((model) => (
-                        <option value={model} key={model}>{model}</option>
-                      ))}
-                      <option value={CUSTOM_MODEL}>custom</option>
-                    </select>
-                  </label>
-                  {settingsDraft.localLlm.enabled && selectValue(settingsDraft.localLlm.model, compressionModelOptions) === CUSTOM_MODEL && (
-                    <label>
-                      <span>Custom compression model</span>
-                      <input
-                        value={settingsDraft.localLlm.model}
+	                          }
+	                        });
+	                      }}
+	                      data={[
+	                        { value: DISABLED_MODEL, label: 'disabled' },
+	                        ...compressionModelOptions.map((model) => ({ value: model, label: model })),
+	                        { value: CUSTOM_MODEL, label: 'custom' },
+	                      ]}
+	                    />
+	                  </label>
+	                  {settingsDraft.localLlm.enabled && selectValue(settingsDraft.localLlm.model, compressionModelOptions) === CUSTOM_MODEL && (
+	                    <label>
+	                      <span>Custom compression model</span>
+	                      <TextInput
+	                        value={settingsDraft.localLlm.model}
                         placeholder="model name"
                         disabled={settingsDraft.optimizer.mode === 'retrieval'}
                         onChange={(event) => setSettingsDraft({
@@ -2217,54 +2212,47 @@ export default function App() {
                   <details className="settingsGroup">
                     <summary>Advanced settings</summary>
                     <div className="settingsGrid">
-                  <label>
-                    <span>Embedding provider</span>
-                    <select
-                      value={settingsDraft.embedding.provider}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
+	                  <label>
+	                    <span>Embedding provider</span>
+	                    <NativeSelect
+	                      value={settingsDraft.embedding.provider}
+	                      onChange={(event) => setSettingsDraft({
+	                        ...settingsDraft,
                         embedding: {
                           ...settingsDraft.embedding,
                           provider: event.target.value,
                           model: event.target.value === 'hash' ? 'hash-based embedder' : settingsDraft.embedding.model === 'hash-based embedder' ? 'nomic-embed-text' : settingsDraft.embedding.model,
-                          dimensions: event.target.value === 'hash' ? 384 : settingsDraft.embedding.dimensions
-                        }
-                      })}
-                    >
-                      <option value="hash">Hash fallback</option>
-                      <option value="ollama">Ollama</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span>Embedding model</span>
-                    <select
-                      value={settingsDraft.embedding.provider === 'hash' ? 'hash-based embedder' : selectValue(settingsDraft.embedding.model, embeddingModelOptions)}
-                      disabled={settingsDraft.embedding.provider === 'hash'}
+	                          dimensions: event.target.value === 'hash' ? 384 : settingsDraft.embedding.dimensions
+	                        }
+	                      })}
+	                      data={[
+	                        { value: 'hash', label: 'Hash fallback' },
+	                        { value: 'ollama', label: 'Ollama' },
+	                      ]}
+	                    />
+	                  </label>
+	                  <label>
+	                    <span>Embedding model</span>
+	                    <NativeSelect
+	                      value={settingsDraft.embedding.provider === 'hash' ? 'hash-based embedder' : selectValue(settingsDraft.embedding.model, embeddingModelOptions)}
+	                      disabled={settingsDraft.embedding.provider === 'hash'}
                       onChange={(event) => {
                         const value = event.target.value;
                         setSettingsDraft({
                           ...settingsDraft,
-                          embedding: { ...settingsDraft.embedding, model: value === CUSTOM_MODEL ? '' : value }
-                        });
-                      }}
-                    >
-                      {settingsDraft.embedding.provider === 'hash' ? (
-                        <option value="hash-based embedder">hash-based embedder</option>
-                      ) : (
-                        <>
-                          {embeddingModelOptions.map((model) => (
-                            <option value={model} key={model}>{model}</option>
-                          ))}
-                          <option value={CUSTOM_MODEL}>custom</option>
-                        </>
-                      )}
-                    </select>
-                  </label>
-                  {settingsDraft.embedding.provider === 'ollama' && selectValue(settingsDraft.embedding.model, embeddingModelOptions) === CUSTOM_MODEL && (
-                    <label>
-                      <span>Custom embedding model</span>
-                      <input
-                        value={settingsDraft.embedding.model}
+	                          embedding: { ...settingsDraft.embedding, model: value === CUSTOM_MODEL ? '' : value }
+	                        });
+	                      }}
+	                      data={settingsDraft.embedding.provider === 'hash'
+	                        ? [{ value: 'hash-based embedder', label: 'hash-based embedder' }]
+	                        : [...embeddingModelOptions.map((model) => ({ value: model, label: model })), { value: CUSTOM_MODEL, label: 'custom' }]}
+	                    />
+	                  </label>
+	                  {settingsDraft.embedding.provider === 'ollama' && selectValue(settingsDraft.embedding.model, embeddingModelOptions) === CUSTOM_MODEL && (
+	                    <label>
+	                      <span>Custom embedding model</span>
+	                      <TextInput
+	                        value={settingsDraft.embedding.model}
                         placeholder="embedding model"
                         onChange={(event) => setSettingsDraft({
                           ...settingsDraft,
@@ -2273,66 +2261,62 @@ export default function App() {
                       />
                     </label>
                   )}
-                  <label className="wideSetting">
-                    <span>Embedding base URL</span>
-                    <input
-                      value={settingsDraft.embedding.baseUrl}
+	                  <label className="wideSetting">
+	                    <span>Embedding base URL</span>
+	                    <TextInput
+	                      value={settingsDraft.embedding.baseUrl}
                       onChange={(event) => setSettingsDraft({
                         ...settingsDraft,
                         embedding: { ...settingsDraft.embedding, baseUrl: event.target.value }
                       })}
                     />
                   </label>
-                  <label>
-                    <span>Embedding dimensions</span>
-                    <input
-                      type="number"
-                      min="1"
-                      max="8192"
-                      value={settingsDraft.embedding.dimensions}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        embedding: { ...settingsDraft.embedding, dimensions: Number(event.target.value) }
-                      })}
-                    />
+	                  <label>
+	                    <span>Embedding dimensions</span>
+	                    <NumberInput
+	                      min={1}
+	                      max={8192}
+	                      value={settingsDraft.embedding.dimensions}
+	                      onChange={(value) => setSettingsDraft({
+	                        ...settingsDraft,
+	                        embedding: { ...settingsDraft.embedding, dimensions: Number(value) || 1 }
+	                      })}
+	                    />
                   </label>
                     </div>
                   </details>
                   <details className="settingsGroup">
                     <summary>Repository Agent</summary>
                     <div className="settingsGrid">
-                  <label className="wideSetting">
-                    <span>Repository path</span>
-                    <input
-                      value={settingsDraft.repositoryAgent.path}
+	                  <label className="wideSetting">
+	                    <span>Repository path</span>
+	                    <TextInput
+	                      value={settingsDraft.repositoryAgent.path}
                       onChange={(event) => setSettingsDraft({
                         ...settingsDraft,
                         repositoryAgent: { ...settingsDraft.repositoryAgent, path: event.target.value }
                       })}
                     />
                   </label>
-                  <label className="toggleRow">
-                    <input
-                      type="checkbox"
-                      checked={settingsDraft.repositoryAgent.scheduled}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        repositoryAgent: { ...settingsDraft.repositoryAgent, scheduled: event.target.checked }
-                      })}
-                    />
-                    <span>Enable scheduled repository scan</span>
-                  </label>
-                  <label>
-                    <span>Repository scan interval ms</span>
-                    <input
-                      type="number"
-                      min="30000"
-                      value={settingsDraft.repositoryAgent.intervalMs}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        repositoryAgent: { ...settingsDraft.repositoryAgent, intervalMs: Number(event.target.value) }
-                      })}
-                    />
+	                  <Checkbox
+	                    className="toggleRow"
+	                      checked={settingsDraft.repositoryAgent.scheduled}
+	                      onChange={(event) => setSettingsDraft({
+	                        ...settingsDraft,
+	                        repositoryAgent: { ...settingsDraft.repositoryAgent, scheduled: event.currentTarget.checked }
+	                      })}
+	                    label="Enable scheduled repository scan"
+	                  />
+	                  <label>
+	                    <span>Repository scan interval ms</span>
+	                    <NumberInput
+	                      min={30000}
+	                      value={settingsDraft.repositoryAgent.intervalMs}
+	                      onChange={(value) => setSettingsDraft({
+	                        ...settingsDraft,
+	                        repositoryAgent: { ...settingsDraft.repositoryAgent, intervalMs: Number(value) || 30000 }
+	                      })}
+	                    />
                   </label>
                   <div className="wideSetting settingHint">
                     Repositories are registered by the external agent or MCP tooling. Use the Repositories page to link discovered repositories to projects.
