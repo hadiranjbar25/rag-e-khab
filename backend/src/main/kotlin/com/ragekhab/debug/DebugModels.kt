@@ -17,6 +17,12 @@ enum class DebugInputType {
     log,
 }
 
+enum class DebugSanitizerMode {
+    strict,
+    balanced,
+    permissive,
+}
+
 enum class DebugWarningType(private val wireName: String) {
     email("email"),
     phone("phone"),
@@ -115,6 +121,7 @@ data class SanitizeDebugRequest(
     val sourceName: String,
     val rawText: String,
     val dataRequestId: UUID? = null,
+    val mode: DebugSanitizerMode = DebugSanitizerMode.balanced,
 )
 
 data class SanitizeDebugResponse(

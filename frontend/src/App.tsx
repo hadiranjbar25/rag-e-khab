@@ -243,6 +243,7 @@ type DebugSession = {
 };
 
 type DebugInputType = 'csv' | 'json' | 'log';
+type DebugSanitizerMode = 'strict' | 'balanced' | 'permissive';
 
 type DebugWarning = {
   type: 'email' | 'phone' | 'name' | 'address' | 'unknown_pii' | 'risky_column';
@@ -465,6 +466,7 @@ export default function App() {
   const [debugTitle, setDebugTitle] = useState('');
   const [debugRawText, setDebugRawText] = useState('');
   const [debugInputType, setDebugInputType] = useState<DebugInputType>('csv');
+  const [debugSanitizerMode, setDebugSanitizerMode] = useState<DebugSanitizerMode>('balanced');
   const [debugSourceName, setDebugSourceName] = useState('users');
   const [debugDataRequestId, setDebugDataRequestId] = useState('');
   const [debugSanitizedText, setDebugSanitizedText] = useState('');
@@ -1067,6 +1069,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inputType: debugInputType,
+          mode: debugSanitizerMode,
           sourceName: debugSourceName || 'custom',
           rawText: debugRawText,
           dataRequestId: debugDataRequestId || undefined
@@ -1301,30 +1304,30 @@ export default function App() {
 
         {view === 'home' && (
           <section className="view">
-            <div className="commandPanel projectOverview">
+            <Paper className="commandPanel projectOverview" p="md" radius="sm" withBorder>
               <div>
                 <span className="eyebrow">Project health</span>
                 <h2>{status?.index.vectorStore === 'qdrant' ? 'Ready for agents' : 'Local memory ready'}</h2>
                 <p>{projectRepositories.length} repositories, {memories.length} memories, {totalChunks} source units available in this project.</p>
               </div>
-            </div>
+            </Paper>
 
             <div className="metrics">
               {stats.map((item) => {
                 const Icon = item.icon;
                 return (
-                <div className={`metric ${item.tone}`} key={item.label}>
+                <Paper className={`metric ${item.tone}`} key={item.label} p="md" radius="sm" withBorder>
                   <div className="metricIcon"><Icon size={18} /></div>
                   <span>{item.label}</span>
                   <strong>{item.value}</strong>
                   <small>{item.detail}</small>
-                </div>
+                </Paper>
                 );
               })}
             </div>
 
             <div className="homeGrid">
-              <section className="surface quietSurface">
+              <Paper component="section" className="surface quietSurface" p="md" radius="sm" withBorder>
                 <div className="surfaceHeader">
                   <h2>System health</h2>
                   <span className="badge success"><CheckCircle2 size={14} /> operational</span>
@@ -1333,9 +1336,9 @@ export default function App() {
                   <div><span>Last sync</span><strong>{lastSync ? new Date(lastSync).toLocaleString() : 'No sync yet'}</strong></div>
                   <div><span>Optimizer</span><strong>{settingsDraft?.optimizer.mode ?? 'retrieval'} · {settingsDraft?.optimizer.maxTokens ?? 3000} tokens</strong></div>
                 </div>
-              </section>
+              </Paper>
 
-              <section className="surface">
+              <Paper component="section" className="surface" p="md" radius="sm" withBorder>
                 <div className="surfaceHeader">
                   <h2>Recent activity</h2>
                   <Clock3 size={18} />
@@ -1344,26 +1347,26 @@ export default function App() {
                   {recentActivity.map((item) => {
                     const Icon = item.icon;
                     return (
-                    <div className="activityRow" key={item.id}>
+                    <Paper className="activityRow" key={item.id} p="sm" radius="sm" withBorder>
                       <div className={`activityIcon ${item.tone}`}><Icon size={16} /></div>
                       <div>
                         <strong>{item.title}</strong>
                         <span>{item.detail}</span>
                       </div>
                       <time>{new Date(item.at).toLocaleDateString()}</time>
-                    </div>
+                    </Paper>
                     );
                   })}
                   {recentActivity.length === 0 && <div className="empty richEmpty"><strong>No activity yet</strong><span>Scan a repository, add a memory, or index knowledge to make this project useful for coding agents.</span></div>}
                 </div>
-              </section>
+              </Paper>
             </div>
           </section>
         )}
 
         {view === 'repositories' && (
           <section className="view">
-            <div className="repoToolbar">
+            <Paper className="repoToolbar" p="md" radius="sm" withBorder>
               <div>
                 <h2>{repositories.length || repositoryStatus?.repositories.length || 0} repositories</h2>
                 <p>Repositories are registered by local agents. Link them to the active project when they should contribute knowledge and memories here. {repositoryStatus?.trackedFiles ?? 0} indexed files · last sync {lastSync ? new Date(lastSync).toLocaleString() : 'not available'}</p>
@@ -1384,7 +1387,7 @@ export default function App() {
                   <Button onClick={() => linkRepositoryToProject()} disabled={busy || !repositoryToLink}>Link</Button>
                 </Group>
               </details>
-            </div>
+            </Paper>
 
             <div className="repositoryList">
               {(repositories.length > 0 ? repositories : (repositoryStatus?.repositories ?? []).map((repo) => ({
@@ -1400,7 +1403,7 @@ export default function App() {
                 const linked = linkedRepositoryIds.has(repo.id);
                 const linkedMemories = memories.filter((memory) => memory.repository === repo.name).length;
                 return (
-                <article className="repoCard" key={repo.id}>
+                <Paper component="article" className="repoCard" key={repo.id} p="md" radius="sm" withBorder>
 	                  <div className="repoCardHeader">
 	                    <div>
 	                      <strong>{repo.name}</strong>
@@ -1440,7 +1443,7 @@ export default function App() {
                       <span>{(languages.length > 0 ? languages : [repo.language]).join(', ')}</span>
                     </div>
                   </details>
-                </article>
+                </Paper>
                 );
               })}
               {repositories.length === 0 && (repositoryStatus?.repositories.length ?? 0) === 0 && <div className="empty richEmpty"><strong>No repositories yet</strong><span>Run the RAG-e Khab agent from a codebase to register a repository, then link it to this project.</span></div>}
@@ -1467,7 +1470,7 @@ export default function App() {
 	              </div>
               <div className="projectGrid">
                 {projects.map((project) => (
-                  <div className={project.id === selectedProjectId ? 'projectCard active' : 'projectCard'} key={project.id}>
+                  <Paper component="article" className={project.id === selectedProjectId ? 'projectCard active' : 'projectCard'} key={project.id} p="md" radius="sm" withBorder>
                   <div>
                     <span>{project.name}</span>
                     <strong>{project.documentCount}</strong>
@@ -1483,7 +1486,7 @@ export default function App() {
 	                      </ActionIcon>
 	                    )}
 	                  </div>
-                  </div>
+                  </Paper>
                 ))}
               </div>
             </details>
@@ -1579,7 +1582,7 @@ export default function App() {
 
             <div className="memoryGrid">
               {pagedMemories.map((memory) => (
-                <article className="memoryCard" key={memory.id}>
+                <Paper component="article" className="memoryCard" key={memory.id} p="md" radius="sm" withBorder>
                   <div className="memoryCardHeader">
                     <span className={`memoryType ${memory.type}`}>{memoryLabels[memory.type] ?? memory.type}</span>
                     <Menu shadow="md" width={190} position="bottom-end">
@@ -1597,7 +1600,7 @@ export default function App() {
                     <span>{Math.round(memory.confidence * 100)}% confidence</span>
                     <span>{memory.repository ?? 'global'}</span>
                   </div>
-                </article>
+                </Paper>
               ))}
               {filteredMemories.length === 0 && <div className="empty richEmpty"><strong>No memories in this view</strong><span>Use the MCP `remember` tool to store architecture decisions, conventions, bug fixes, patterns, and project knowledge.</span></div>}
             </div>
@@ -1606,7 +1609,7 @@ export default function App() {
 
 	        {view === 'knowledge' && (
 	          <section className="view knowledgeLayout">
-	            <section className="surface ingestSurface">
+	            <Paper component="section" className="surface ingestSurface" p="md" radius="sm" withBorder>
 	              <SegmentedControl
 	                fullWidth
 	                value={ingestMode}
@@ -1638,27 +1641,27 @@ export default function App() {
 	                  />
 	                </Paper>
 	              )}
-	            </section>
+	            </Paper>
 
-            <section className="surface">
+            <Paper component="section" className="surface" p="md" radius="sm" withBorder>
               <div className="surfaceHeader">
 	                <h2>Indexed items</h2>
 	                <Button variant="light" color="gray" onClick={reindex} disabled={busy} leftSection={<RefreshCw size={16} />}>Reindex</Button>
 	              </div>
               <div className="documentList">
                 {documents.map((doc) => (
-                  <div className="documentRow" key={doc.id}>
+                  <Paper className="documentRow" key={doc.id} p="sm" radius="sm" withBorder>
                     <FileText size={20} />
                     <div>
                       <strong>{doc.name}</strong>
                         <span>{doc.projectName} · {doc.format} · {doc.chunkCount} source units · {(doc.sizeBytes / 1024).toFixed(1)} KB</span>
                     </div>
 	                    <ActionIcon variant="light" color="red" onClick={() => deleteDocument(doc.id)} disabled={busy} title="Delete document"><Trash2 size={18} /></ActionIcon>
-                  </div>
+                  </Paper>
                 ))}
                 {documents.length === 0 && <div className="empty richEmpty"><strong>No sources indexed yet</strong><span>Add text, upload a file, or sync a repository so coding agents can retrieve useful context.</span></div>}
               </div>
-            </section>
+            </Paper>
           </section>
         )}
 
@@ -1676,7 +1679,7 @@ export default function App() {
                   <span>{debugSessions.length} active</span>
                 </div>
                 {debugSessions.map((session) => (
-                  <article className={session.id === activeDebugSessionId ? 'debugSessionRow active' : 'debugSessionRow'} key={session.id}>
+                  <Paper component="article" className={session.id === activeDebugSessionId ? 'debugSessionRow active' : 'debugSessionRow'} key={session.id} p="sm" radius="sm" withBorder>
                     <div>
                       <strong>{session.title}</strong>
                       <span>{session.id}</span>
@@ -1688,24 +1691,24 @@ export default function App() {
 	                      <Button variant="subtle" color="gray" onClick={() => openDebugSession(session.id)} disabled={busy}>Open</Button>
 	                      <ActionIcon variant="light" color="gray" onClick={() => archiveDebugSession(session.id)} disabled={busy} title="Archive session"><Archive size={17} /></ActionIcon>
 	                    </div>
-                  </article>
+                  </Paper>
                 ))}
                 {debugSessions.length === 0 && <div className="empty richEmpty"><strong>No debug sessions</strong><span>Create a session before pasting query output. Raw pasted data stays local to the sanitize request and is not stored.</span></div>}
               </section>
 
-	              <section className="debugInstruction">
+	              <Paper component="section" className="debugInstruction" p="md" radius="sm" withBorder>
 	                <div className="surfaceHeader">
 	                  <h2>Claude instruction</h2>
 	                  <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(safeDebugInstruction)} title="Copy instruction"><Copy size={17} /></ActionIcon>
 	                </div>
                 <pre>{safeDebugInstruction}</pre>
-              </section>
+              </Paper>
             </section>
 
             <section className="safeDebugDetail">
               {debugDetail ? (
                 <>
-                  <section className="debugHeader">
+                  <Paper component="section" className="debugHeader" p="md" radius="sm" withBorder>
                     <div>
                       <span className="eyebrow">Session header</span>
                       <h2>{debugDetail.session.title}</h2>
@@ -1715,9 +1718,9 @@ export default function App() {
                       <span className={debugDetail.session.status === 'active' ? 'badge success' : 'badge'}>{debugDetail.session.status}</span>
                       <small>Created {new Date(debugDetail.session.createdAt).toLocaleString()}</small>
                     </div>
-                  </section>
+                  </Paper>
 
-                  <section className="debugPanel">
+                  <Paper component="section" className="debugPanel" p="md" radius="sm" withBorder>
                     <div className="surfaceHeader">
                       <h2>Pending Claude Requests</h2>
                       <span>{pendingDebugRequests.length} pending</span>
@@ -1727,7 +1730,7 @@ export default function App() {
                         const mapping = tokenMappingFor(item.parentToken);
                         const suggestedSql = suggestedSqlFor(item);
                         return (
-                          <article className="debugRequestCard" key={item.id}>
+                          <Paper component="article" className="debugRequestCard" key={item.id} p="md" radius="sm" withBorder>
                             <div className="debugRequestHeader">
                               <div>
                                 <strong>{item.entity}</strong>
@@ -1744,15 +1747,15 @@ export default function App() {
 	                              <Button variant="light" color="teal" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</Button>
 	                              <Button variant="light" color="red" onClick={() => updateDebugDataRequest(item.id, 'reject')} disabled={busy || item.status !== 'pending'}>Reject</Button>
 	                            </div>
-                          </article>
+                          </Paper>
                         );
                       })}
                       {debugDetail.dataRequests.length === 0 && <div className="empty">Claude has not created any structured data requests yet.</div>}
                     </div>
-                  </section>
+                  </Paper>
 
                   <section className="debugTwoColumn">
-                    <div className="debugPanel">
+                    <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
                         <h2>Paste data</h2>
                         <ShieldCheck size={18} />
@@ -1763,6 +1766,11 @@ export default function App() {
 	                          { value: 'csv', label: 'CSV' },
 	                          { value: 'json', label: 'JSON' },
 	                          { value: 'log', label: 'LOG' },
+	                        ]} />
+	                        <NativeSelect value={debugSanitizerMode} onChange={(event) => setDebugSanitizerMode(event.target.value as DebugSanitizerMode)} data={[
+	                          { value: 'balanced', label: 'Balanced' },
+	                          { value: 'strict', label: 'Strict' },
+	                          { value: 'permissive', label: 'Permissive' },
 	                        ]} />
 	                        <TextInput value={debugSourceName} onChange={(event) => setDebugSourceName(event.target.value)} placeholder="users, orders, payments, custom" />
 	                        <Button onClick={sanitizeDebugData} disabled={busy || !debugRawText.trim()} leftSection={<ShieldCheck size={18} />}>Sanitize</Button>
@@ -1779,9 +1787,9 @@ export default function App() {
 	                          })),
 	                        ]}
 	                      />
-                    </div>
+                    </Paper>
 
-                    <div className="debugPanel">
+                    <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
 	                        <h2>Sanitized output</h2>
 	                        <div className="debugInlineActions">
@@ -1790,11 +1798,11 @@ export default function App() {
 	                        </div>
                       </div>
                       <pre className="debugOutput">{debugSanitizedText || 'Sanitized data will appear here.'}</pre>
-                    </div>
+                    </Paper>
                   </section>
 
                   <section className="debugTwoColumn">
-                    <div className="debugPanel">
+                    <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
                         <h2>Resolve token</h2>
                         <KeyRound size={18} />
@@ -1812,9 +1820,9 @@ export default function App() {
                       ) : (
                         <div className="empty">Resolve a token to manually query the database without asking Claude for raw data.</div>
                       )}
-                    </div>
+                    </Paper>
 
-                    <div className="debugPanel">
+                    <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
                         <h2>Claude requests</h2>
                         <span>{debugDetail.notes.length}</span>
@@ -1828,10 +1836,10 @@ export default function App() {
                           <div key={note.id}><strong>{note.request}</strong><span>{new Date(note.createdAt).toLocaleString()}</span></div>
                         ))}
                       </div>
-                    </div>
+                    </Paper>
                   </section>
 
-                  <section className="debugPanel promoteMemoryPanel">
+                  <Paper component="section" className="debugPanel promoteMemoryPanel" p="md" radius="sm" withBorder>
                     <div className="surfaceHeader">
                       <div>
                         <h2>Promote Lesson to Memory</h2>
@@ -1847,9 +1855,9 @@ export default function App() {
 	                      <Textarea value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." minRows={4} autosize />
 	                      <Button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim()} leftSection={<Brain size={18} />}>Promote</Button>
 	                    </div>
-                  </section>
+                  </Paper>
 
-                  <section className="debugPanel">
+                  <Paper component="section" className="debugPanel" p="md" radius="sm" withBorder>
                     <div className="surfaceHeader">
 	                      <h2>Token map</h2>
 	                      <div className="memorySearch debugSearch">
@@ -1876,10 +1884,10 @@ export default function App() {
                       ))}
                       {filteredDebugMappings.length === 0 && <div className="empty">No token mappings yet.</div>}
                     </div>
-                  </section>
+                  </Paper>
 
                   <section className="debugTwoColumn">
-                    <div className="debugPanel">
+                    <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
                         <h2>Shared artifacts</h2>
                         <span>{debugDetail.artifacts.length}</span>
@@ -1897,9 +1905,9 @@ export default function App() {
                         ))}
                         {debugDetail.artifacts.length === 0 && <div className="empty">No sanitized artifacts saved yet.</div>}
                       </div>
-                    </div>
+                    </Paper>
 
-                    <div className="debugPanel">
+                    <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
                         <h2>Warnings</h2>
                         <AlertCircle size={18} />
@@ -1913,7 +1921,7 @@ export default function App() {
                         ))}
                         {debugWarnings.length === 0 && (debugDetail.artifacts[0]?.warningSummary.length ?? 0) === 0 && <div className="empty">No warnings for the latest artifact.</div>}
                       </div>
-                    </div>
+                    </Paper>
                   </section>
                 </>
               ) : (
@@ -1925,7 +1933,7 @@ export default function App() {
 
         {view === 'optimizer' && (
           <section className="optimizerLayout">
-            <section className="surface optimizerComposer flagshipCard">
+            <Paper component="section" className="surface optimizerComposer flagshipCard" p="md" radius="sm" withBorder>
               <div className="surfaceHeader">
                 <div>
                   <span className="eyebrow">MCP tool: optimize_context</span>
@@ -1939,9 +1947,9 @@ export default function App() {
                 <div><span>Mode</span><strong>{settingsDraft?.optimizer.mode ?? 'retrieval'}</strong></div>
                 <div><span>Budget</span><strong>{settingsDraft?.optimizer.maxTokens ?? 3000} tokens</strong></div>
               </div>
-            </section>
+            </Paper>
 
-            <section className="surface optimizedResult flagshipResult">
+            <Paper component="section" className="surface optimizedResult flagshipResult" p="md" radius="sm" withBorder>
               {optimizedContext ? (
                 <>
                   <div className="optimizedHero">
@@ -1983,40 +1991,40 @@ export default function App() {
               ) : (
                 <div className="empty richEmpty"><strong>Ready to optimize</strong><span>Enter a coding task and RAG-e Khab will retrieve, rank, deduplicate, compress when configured, and return context within the token budget.</span></div>
               )}
-            </section>
+            </Paper>
           </section>
         )}
 
         {view === 'chat' && (
 	          <section className="chatLayout">
-	            <section className="surface chatSurface">
+	            <Paper component="section" className="surface chatSurface" p="md" radius="sm" withBorder>
 	              <div className="composer">
 	                <Textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask your knowledge base..." minRows={4} autosize />
 	                <ActionIcon size="xl" onClick={() => ask()} disabled={busy || !question.trim()} title="Send question"><Send size={18} /></ActionIcon>
 	              </div>
               <div className="answers">
                 {history.map((turn) => (
-                  <article className="turn" key={turn.id}>
+                  <Paper component="article" className="turn" key={turn.id} p="md" radius="sm" withBorder>
                     <div className="questionBubble">{turn.question}</div>
                     <div className="answerBubble">
                       <div className="answerMeta">{turn.response.provider} - {new Date(turn.response.createdAt).toLocaleString()}</div>
                       <p>{turn.response.answer}</p>
 	                      <div className="sources">
 	                        {turn.response.sources.map((source) => (
-	                          <Paper component="button" className="sourceCard" onClick={() => setActiveSource(source)} key={source.chunkId}>
+	                          <Paper component="button" className="sourceCard" onClick={() => setActiveSource(source)} key={source.chunkId} p="sm" radius="sm" withBorder>
 	                            <strong>{source.documentName}</strong>
 	                            <span>{source.pageNumber ? `page ${source.pageNumber}` : 'text'} - score {source.score.toFixed(2)}</span>
 	                          </Paper>
 	                        ))}
 	                      </div>
                     </div>
-                  </article>
+                  </Paper>
                 ))}
                 {history.length === 0 && <div className="empty richEmpty"><strong>No conversation yet</strong><span>Ask a question to inspect cited answers from memories, documents, and repository knowledge.</span></div>}
               </div>
-            </section>
+            </Paper>
 
-            <aside className="sourcePanel">
+            <Paper component="aside" className="sourcePanel" p="md" radius="sm" withBorder>
               <div className="surfaceHeader">
                 <h2>Source</h2>
                 <Layers size={18} />
@@ -2031,20 +2039,20 @@ export default function App() {
               ) : (
                 <div className="empty richEmpty"><strong>No source selected</strong><span>Select a citation from an answer to inspect the exact retrieved context.</span></div>
               )}
-            </aside>
+            </Paper>
           </section>
         )}
 
         {view === 'settings' && (
           <section className="view">
             {settingsDraft && (
-	              <section className="surface settingsPanel">
+	              <Paper component="section" className="surface settingsPanel" p="md" radius="sm" withBorder>
 	                <div className="surfaceHeader">
 	                  <h2>Settings</h2>
 	                  <Button onClick={saveSettings} disabled={busy}>Save</Button>
 	                </div>
                 <div className="settingsSections">
-                  <details className="settingsGroup" open>
+                  <Paper component="details" className="settingsGroup" open p="md" radius="sm" withBorder>
                     <summary>Models</summary>
                     <div className="settingsGrid">
 	                  <label>
@@ -2107,8 +2115,8 @@ export default function App() {
                     />
                   </label>
                     </div>
-                  </details>
-                  <details className="settingsGroup">
+                  </Paper>
+                  <Paper component="details" className="settingsGroup" p="md" radius="sm" withBorder>
                     <summary>Optimizer</summary>
                     <div className="settingsGrid">
 	                  <label>
@@ -2208,8 +2216,8 @@ export default function App() {
                     </label>
                   )}
                     </div>
-                  </details>
-                  <details className="settingsGroup">
+                  </Paper>
+                  <Paper component="details" className="settingsGroup" p="md" radius="sm" withBorder>
                     <summary>Advanced settings</summary>
                     <div className="settingsGrid">
 	                  <label>
@@ -2284,8 +2292,8 @@ export default function App() {
 	                    />
                   </label>
                     </div>
-                  </details>
-                  <details className="settingsGroup">
+                  </Paper>
+                  <Paper component="details" className="settingsGroup" p="md" radius="sm" withBorder>
                     <summary>Repository Agent</summary>
                     <div className="settingsGrid">
 	                  <label className="wideSetting">
@@ -2322,8 +2330,8 @@ export default function App() {
                     Repositories are registered by the external agent or MCP tooling. Use the Repositories page to link discovered repositories to projects.
                   </div>
                     </div>
-                  </details>
-                  <details className="settingsGroup">
+                  </Paper>
+                  <Paper component="details" className="settingsGroup" p="md" radius="sm" withBorder>
                     <summary>Storage diagnostics</summary>
                     <div className="adminGrid storageGrid">
                       <div><span>Vector store</span><strong>{status?.index.vectorStore ?? 'unknown'}</strong></div>
@@ -2331,9 +2339,9 @@ export default function App() {
                       <div><span>Qdrant</span><strong>{status?.qdrantUrl ?? 'unknown'}</strong></div>
                       <div><span>Documents</span><strong>{status?.index.documentCount ?? 0}</strong></div>
                     </div>
-                  </details>
+                  </Paper>
                 </div>
-              </section>
+              </Paper>
             )}
           </section>
         )}

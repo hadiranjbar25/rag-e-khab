@@ -56,7 +56,7 @@ class DebugSessionService(
     fun sanitize(sessionId: UUID, request: SanitizeDebugRequest): SanitizeDebugResponse {
         requireSession(sessionId)
         val warnings = WarningCollector()
-        val context = SanitizeContext(sessionId, request.sourceName.trim().ifBlank { "custom" }, warnings)
+        val context = SanitizeContext(sessionId, request.sourceName.trim().ifBlank { "custom" }, request.mode, warnings)
         val sanitized = when (request.inputType) {
             DebugInputType.csv -> sanitizeCsv(request.rawText, context)
             DebugInputType.json -> sanitizeJson(request.rawText, context)
@@ -280,39 +280,82 @@ class DebugSessionService(
             else -> node
         }
 
-    private fun sanitizeLog(raw: String, context: SanitizeContext): String {
+    private fun sanitizeLog(raw: String, context: SanitizeContext): String = sanitizeFreeText(raw, context, "free_text")
+
+    private fun sanitizeFreeText(raw: String, context: SanitizeContext, field: String): String {
         var output = raw
         knownMappings(context.sessionId).forEach { mapping ->
             output = output.replace(Regex("""(?<![A-Za-z0-9_])${Regex.escape(mapping.realValue)}(?![A-Za-z0-9_])"""), mapping.token)
         }
+        output = jwtRegex.replace(output) {
+            context.warnings.add(DebugWarningType.unknown_pii, "Detected JWT-like secret and replaced it with a token.", field)
+            tokenFor(context, "SECRET", "free_text", "jwt", it.value)
+        }
+        output = apiKeyRegex.replace(output) {
+            context.warnings.add(DebugWarningType.unknown_pii, "Detected API key-like secret and replaced it with a token.", field)
+            "${it.groupValues[1]}=${tokenFor(context, "SECRET", "free_text", "secret", it.groupValues[2])}"
+        }
+        output = ssnRegex.replace(output) {
+            context.warnings.add(DebugWarningType.unknown_pii, "Detected SSN-like value and replaced it with a token.", field)
+            tokenFor(context, "SSN", "free_text", "ssn", it.value)
+        }
         output = emailRegex.replace(output) {
-            context.warnings.add(DebugWarningType.email, "Detected email address in free text.", "free_text")
+            context.warnings.add(DebugWarningType.email, "Detected email address in free text.", field)
             tokenFor(context, "EMAIL", "free_text", "email", it.value)
         }
         output = phoneRegex.replace(output) {
-            context.warnings.add(DebugWarningType.phone, "Detected phone number in free text.", "free_text")
+            context.warnings.add(DebugWarningType.phone, "Detected phone number in free text.", field)
             tokenFor(context, "PHONE", "free_text", "phone", it.value)
         }
         output = cardRegex.replace(output) {
-            context.warnings.add(DebugWarningType.unknown_pii, "Possible payment card value was removed.", "free_text")
+            context.warnings.add(DebugWarningType.unknown_pii, "Possible payment card value was removed.", field)
             tokenFor(context, "UNKNOWN", "free_text", "card", it.value)
         }
         output = ibanRegex.replace(output) {
-            context.warnings.add(DebugWarningType.unknown_pii, "Possible IBAN value was removed.", "free_text")
+            context.warnings.add(DebugWarningType.unknown_pii, "Possible IBAN value was removed.", field)
             tokenFor(context, "UNKNOWN", "free_text", "iban", it.value)
         }
-        if (likelyNameRegex.containsMatchIn(output)) {
-            context.warnings.add(DebugWarningType.person_name, "Free text may contain names.", "free_text")
+        if (context.mode != DebugSanitizerMode.permissive) {
+            output = addressRegex.replace(output) {
+                context.warnings.add(DebugWarningType.address, "Detected address in free text and replaced it with a token.", field)
+                tokenFor(context, "ADDRESS", "free_text", "address", it.value)
+            }
+            output = labelledNameRegex.replace(output) {
+                context.warnings.add(DebugWarningType.person_name, "Detected labelled person name in free text and replaced it with a token.", field)
+                "${it.groupValues[1]}=${tokenFor(context, "PERSON", "free_text", "name", it.groupValues[2])}"
+            }
         }
-        if (addressRegex.containsMatchIn(output)) {
-            context.warnings.add(DebugWarningType.address, "Free text may contain addresses.", "free_text")
+        if (context.mode == DebugSanitizerMode.strict) {
+            output = dobInTextRegex.replace(output) {
+                context.warnings.add(DebugWarningType.unknown_pii, "Detected birth-date-like value and replaced it with a token.", field)
+                "${it.groupValues[1]}=${tokenFor(context, "DATE", "free_text", "date", it.groupValues[2])}"
+            }
+            output = uuidRegex.replace(output) {
+                context.warnings.add(DebugWarningType.unknown_pii, "Detected UUID-like value and replaced it with a token.", field)
+                tokenFor(context, "UUID", "free_text", "uuid", it.value)
+            }
+            output = ipRegex.replace(output) {
+                context.warnings.add(DebugWarningType.unknown_pii, "Detected IP address and replaced it with a token.", field)
+                tokenFor(context, "IP", "free_text", "ip", it.value)
+            }
+            output = likelyFullNameRegex.replace(output) {
+                context.warnings.add(DebugWarningType.person_name, "Detected possible person name and replaced it with a token.", field)
+                tokenFor(context, "PERSON", "free_text", "name", it.value)
+            }
+        } else {
+            if (likelyFullNameRegex.containsMatchIn(output)) {
+                context.warnings.add(DebugWarningType.person_name, "Free text may contain names.", field)
+            }
+            if (addressRegex.containsMatchIn(output)) {
+                context.warnings.add(DebugWarningType.address, "Free text may contain addresses.", field)
+            }
         }
         return output
     }
 
     private fun sanitizeField(field: String, value: String, context: SanitizeContext): String {
         if (value.isBlank()) return value
-        val normalized = field.trim().lowercase()
+        val normalized = normalizeFieldName(field)
         val rule = configuredRules[context.sourceName.lowercase()]?.get(normalized) ?: inferredRule(normalized)
         if (rule?.keep == true) return value
         if (rule?.token != null) return tokenFor(context, rule.token, context.sourceName, normalized, value)
@@ -342,9 +385,22 @@ class DebugSessionService(
                 context.warnings.add(DebugWarningType.unknown_pii, "Possible IBAN value was removed.", field)
                 return tokenFor(context, "UNKNOWN", context.sourceName, normalized.ifBlank { "iban" }, value)
             }
+            ssnRegex.matches(value) -> {
+                context.warnings.add(DebugWarningType.unknown_pii, "SSN-like value was removed.", field)
+                return tokenFor(context, "SSN", context.sourceName, normalized.ifBlank { "ssn" }, value)
+            }
+            jwtRegex.matches(value) || apiKeyRegex.matches(value) -> {
+                context.warnings.add(DebugWarningType.unknown_pii, "Secret-like value was removed.", field)
+                return tokenFor(context, "SECRET", context.sourceName, normalized.ifBlank { "secret" }, value)
+            }
             riskyColumns.any { normalized.contains(it) } -> {
                 context.warnings.add(DebugWarningType.risky_column, "Column may contain sensitive data.", field)
-                return tokenFor(context, "UNKNOWN", context.sourceName, normalized.ifBlank { "unknown" }, value)
+                val sanitized = sanitizeFreeText(value, context, field)
+                return when {
+                    sanitized != value -> sanitized
+                    context.mode == DebugSanitizerMode.strict -> tokenFor(context, "UNKNOWN", context.sourceName, normalized.ifBlank { "unknown" }, value)
+                    else -> value
+                }
             }
             addressRegex.containsMatchIn(value) -> {
                 context.warnings.add(DebugWarningType.address, "Value may contain an address.", field)
@@ -358,16 +414,20 @@ class DebugSessionService(
         }
     }
 
-    private fun inferredRule(field: String): FieldRule? =
-        when {
+    private fun inferredRule(field: String): FieldRule? {
+        val compact = field.replace(Regex("""[^a-z0-9]+"""), "")
+        return when {
             field == "id" -> FieldRule(token = tokenPrefixFor("custom"))
             field.endsWith("_id") -> FieldRule(token = tokenPrefixFor(field.removeSuffix("_id")))
-            field.contains("email") -> FieldRule(mask = "EMAIL")
-            field.contains("phone") || field.contains("mobile") -> FieldRule(mask = "PHONE")
-            field.contains("address") -> FieldRule(mask = "ADDRESS")
-            field.contains("name") -> FieldRule(mask = "PERSON")
+            compact.contains("email") || compact.contains("mailaddress") -> FieldRule(mask = "EMAIL")
+            compact.contains("phone") || compact.contains("mobile") || compact.contains("telephone") || compact == "tel" -> FieldRule(mask = "PHONE")
+            compact.contains("address") || compact.contains("street") || compact.contains("postcode") || compact.contains("zipcode") -> FieldRule(mask = "ADDRESS")
+            compact.contains("firstname") || compact.contains("lastname") || compact.contains("fullname") || compact.endsWith("name") -> FieldRule(mask = "PERSON")
+            compact.contains("ssn") || compact.contains("dob") || compact.contains("birth") -> FieldRule(mask = "SSN")
+            compact.contains("apikey") || compact.contains("token") || compact.contains("secret") || compact.contains("jwt") -> FieldRule(mask = "SECRET")
             else -> null
         }
+    }
 
     private fun tokenFor(context: SanitizeContext, prefix: String, table: String, column: String, realValue: String): String {
         val normalizedPrefix = prefix.uppercase()
@@ -423,6 +483,9 @@ class DebugSessionService(
             phoneRegex.find(trimmed)?.value?.let { "phone number" },
             cardRegex.find(trimmed)?.value?.let { "payment card-like value" },
             ibanRegex.find(trimmed)?.value?.let { "IBAN-like value" },
+            ssnRegex.find(trimmed)?.value?.let { "SSN-like value" },
+            jwtRegex.find(trimmed)?.value?.let { "JWT-like secret" },
+            apiKeyRegex.find(trimmed)?.value?.let { "API key-like secret" },
             sqlRealIdRegex.find(trimmed)?.value?.let { "SQL with a likely real identifier" },
         )
         require(blocked.isEmpty()) {
@@ -470,7 +533,14 @@ class DebugSessionService(
         if (value.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"${value.replace("\"", "\"\"")}\"" else value
 
     private fun likelyPersonName(value: String, field: String): Boolean =
-        field.contains("name") || (value.length in 3..80 && value.split(Regex("""\s+""")).size in 2..3 && likelyNameRegex.matches(value))
+        field.contains("name") || (value.length in 3..80 && value.split(Regex("""\s+""")).size in 2..3 && likelyFullNameRegex.matches(value))
+
+    private fun normalizeFieldName(field: String): String =
+        field.trim()
+            .replace(Regex("""([a-z0-9])([A-Z])"""), "$1_$2")
+            .lowercase()
+            .replace(Regex("""[^a-z0-9]+"""), "_")
+            .trim('_')
 
     private fun tokenPrefixFor(table: String): String =
         when (table.lowercase().trim()) {
@@ -492,6 +562,7 @@ class DebugSessionService(
     private data class SanitizeContext(
         val sessionId: UUID,
         val sourceName: String,
+        val mode: DebugSanitizerMode,
         val warnings: WarningCollector,
     )
 
@@ -523,11 +594,18 @@ class DebugSessionService(
         private val phoneRegex = Regex("""(?:\+?\d[\d\s().-]{7,}\d)""")
         private val cardRegex = Regex("""(?:\d[ -]*?){13,19}""")
         private val ibanRegex = Regex("""[A-Z]{2}\d{2}[A-Z0-9]{11,30}""", RegexOption.IGNORE_CASE)
+        private val ssnRegex = Regex("""\b\d{3}-\d{2}-\d{4}\b""")
+        private val jwtRegex = Regex("""\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b""")
+        private val apiKeyRegex = Regex("""(?i)\b(api[_-]?key|token|secret|authorization)\s*[:=]\s*([A-Za-z0-9._~+/=-]{16,})""")
+        private val uuidRegex = Regex("""\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b""", RegexOption.IGNORE_CASE)
+        private val ipRegex = Regex("""\b(?:\d{1,3}\.){3}\d{1,3}\b""")
         private val addressRegex = Regex("""\b\d{1,6}\s+[A-Za-z0-9 .'-]+\s+(Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Drive|Dr|Boulevard|Blvd)\b""", RegexOption.IGNORE_CASE)
-        private val likelyNameRegex = Regex("""[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}""")
-        private val debugTokenRegex = Regex("""\b(?:USER|ORDER|PAYMENT|EMAIL|PERSON|PHONE|ADDRESS|UNKNOWN)_\d{3,}\b""")
+        private val labelledNameRegex = Regex("""(?i)\b(name|customer|user|patient)\s*[:=]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})""")
+        private val dobInTextRegex = Regex("""(?i)\b(dob|date_of_birth|birth_date|birthday)\s*[:=]\s*(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})""")
+        private val likelyFullNameRegex = Regex("""[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}""")
+        private val debugTokenRegex = Regex("""\b(?:USER|ORDER|PAYMENT|EMAIL|PERSON|PHONE|ADDRESS|UNKNOWN|SECRET|SSN|DATE|UUID|IP)_\d{3,}\b""")
         private val sqlRealIdRegex = Regex("""\bwhere\s+[a-z_][a-z0-9_]*\s*=\s*(?:\d+|'[^']+')""", RegexOption.IGNORE_CASE)
-        private val riskyColumns = listOf("email", "phone", "name", "address", "iban", "card", "ssn", "dob", "birth", "note", "comment", "description")
+        private val riskyColumns = listOf("email", "phone", "name", "address", "iban", "card", "ssn", "dob", "birth", "note", "comment", "description", "secret", "token", "api_key")
         private val configuredRules = mapOf(
             "users" to mapOf(
                 "id" to FieldRule(token = "USER"),
