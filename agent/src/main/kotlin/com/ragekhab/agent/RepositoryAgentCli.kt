@@ -4,6 +4,11 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.awt.BorderLayout
+import java.awt.Dimension
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.StandardCharsets
@@ -11,18 +16,43 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.prefs.Preferences
+import javax.swing.BorderFactory
+import javax.swing.JButton
+import javax.swing.JCheckBox
+import javax.swing.JComboBox
+import javax.swing.JFileChooser
+import javax.swing.JFrame
+import javax.swing.JLabel
+import javax.swing.JOptionPane
+import javax.swing.JPanel
+import javax.swing.JScrollPane
+import javax.swing.JTextArea
+import javax.swing.JTextField
+import javax.swing.SwingUtilities
+import javax.swing.SwingWorker
+import javax.swing.WindowConstants
 import kotlin.io.path.extension
 import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 
 fun main(args: Array<String>) {
+    if (args.isEmpty() || args.any { it == "--ui" }) {
+        SwingUtilities.invokeLater { RepositoryAgentUi().isVisible = true }
+        return
+    }
+
     val options = CliOptions.parse(args)
     if (options.help) {
         println(usage())
         return
     }
 
+    runRepositoryAgent(options) { println(it) }
+}
+
+private fun runRepositoryAgent(options: CliOptions, log: (String) -> Unit) {
     val root = options.path.toAbsolutePath().normalize()
     require(Files.isDirectory(root)) { "Repository path does not exist or is not a directory: $root" }
 
@@ -32,13 +62,13 @@ fun main(args: Array<String>) {
         SyncProfile.Claude -> buildClaudeContext(repository, root, discovered)
         SyncProfile.Source -> discovered
     }
-    println("RAG-e Khab agent scanning $repository at $root")
-    println("Discovered ${discovered.size} indexable file(s)")
-    println("Sync profile '${options.profile.value}' will send ${files.size} context artifact(s)")
+    log("RAG-e Khab agent scanning $repository at $root")
+    log("Discovered ${discovered.size} indexable file(s)")
+    log("Sync profile '${options.profile.value}' will send ${files.size} context artifact(s)")
 
     if (options.dryRun) {
-        files.take(40).forEach { println("${it.path} (${it.language}, ${it.sizeBytes} bytes)") }
-        if (files.size > 40) println("... ${files.size - 40} more")
+        files.take(40).forEach { log("${it.path} (${it.language}, ${it.sizeBytes} bytes)") }
+        if (files.size > 40) log("... ${files.size - 40} more")
         return
     }
 
@@ -66,7 +96,7 @@ fun main(args: Array<String>) {
         unchanged += response.intField("unchangedFiles")
         skipped += response.intField("skippedFiles")
         deleted += response.intField("deletedFiles")
-        println("Batch ${batchNumber++}: ${batch.size} file(s), ${response.compact()}")
+        log("Batch ${batchNumber++}: ${batch.size} file(s), ${response.compact()}")
     }
 
     if (options.full) {
@@ -83,10 +113,10 @@ fun main(args: Array<String>) {
             ),
         )
         deleted += response.intField("deletedFiles")
-        println("Full-sync cleanup: ${response.compact()}")
+        log("Full-sync cleanup: ${response.compact()}")
     }
 
-    println("Done. indexed=$indexed unchanged=$unchanged deleted=$deleted skipped=$skipped")
+    log("Done. indexed=$indexed unchanged=$unchanged deleted=$deleted skipped=$skipped")
 }
 
 private data class CliOptions(
@@ -139,6 +169,165 @@ private enum class SyncProfile(val value: String) {
         fun parse(value: String): SyncProfile =
             entries.firstOrNull { it.value == value.lowercase() }
                 ?: error("Unsupported profile '$value'. Use: ${entries.joinToString { it.value }}")
+    }
+}
+
+private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
+    private val preferences = Preferences.userNodeForPackage(RepositoryAgentUi::class.java)
+    private val serverField = JTextField(preferences.get("server", System.getenv("RAGEKHAB_URL") ?: "http://localhost:8060"))
+    private val repositoryField = JTextField()
+    private val pathBox = JComboBox(recentPaths().toTypedArray()).apply {
+        isEditable = true
+        selectedItem = Path.of(".").toAbsolutePath().normalize().toString()
+    }
+    private val profileBox = JComboBox(SyncProfile.entries.map { it.value }.toTypedArray()).apply {
+        selectedItem = SyncProfile.Claude.value
+    }
+    private val fullCheck = JCheckBox("Full sync cleanup", true)
+    private val dryRunCheck = JCheckBox("Dry run")
+    private val maxBatchBytesField = JTextField("4000000")
+    private val maxFileBytesField = JTextField("1000000")
+    private val runButton = JButton("Run sync")
+    private val output = JTextArea().apply {
+        isEditable = false
+        lineWrap = true
+        wrapStyleWord = true
+        rows = 12
+    }
+
+    init {
+        defaultCloseOperation = WindowConstants.EXIT_ON_CLOSE
+        minimumSize = Dimension(620, 520)
+        contentPane = JPanel(BorderLayout(12, 12)).apply {
+            border = BorderFactory.createEmptyBorder(14, 14, 14, 14)
+            add(formPanel(), BorderLayout.NORTH)
+            add(JScrollPane(output), BorderLayout.CENTER)
+        }
+        runButton.addActionListener { runSync() }
+        pack()
+        setLocationRelativeTo(null)
+    }
+
+    private fun formPanel(): JPanel {
+        val panel = JPanel(GridBagLayout())
+        var row = 0
+        panel.addRow(row++, "Server", serverField)
+        panel.addRow(row++, "Repository name", repositoryField)
+        panel.addPathRow(row++)
+        panel.addRow(row++, "Profile", profileBox)
+        panel.addRow(row++, "Max batch bytes", maxBatchBytesField)
+        panel.addRow(row++, "Max file bytes", maxFileBytesField)
+        panel.addOptionsRow(row++)
+        return panel
+    }
+
+    private fun JPanel.addPathRow(row: Int) {
+        add(JLabel("Repository path"), labelConstraints(row))
+        add(pathBox, fieldConstraints(row, weightX = 1.0))
+        add(JButton("Browse").apply {
+            addActionListener { choosePath() }
+        }, GridBagConstraints().apply {
+            gridx = 2
+            gridy = row
+            insets = Insets(4, 6, 4, 0)
+            fill = GridBagConstraints.HORIZONTAL
+        })
+    }
+
+    private fun JPanel.addOptionsRow(row: Int) {
+        add(JLabel("Options"), labelConstraints(row))
+        add(JPanel().apply {
+            add(fullCheck)
+            add(dryRunCheck)
+            add(runButton)
+        }, fieldConstraints(row, gridWidth = 2, weightX = 1.0))
+    }
+
+    private fun JPanel.addRow(row: Int, label: String, field: java.awt.Component) {
+        add(JLabel(label), labelConstraints(row))
+        add(field, fieldConstraints(row, gridWidth = 2, weightX = 1.0))
+    }
+
+    private fun labelConstraints(row: Int): GridBagConstraints =
+        GridBagConstraints().apply {
+            gridx = 0
+            gridy = row
+            anchor = GridBagConstraints.WEST
+            insets = Insets(4, 0, 4, 8)
+        }
+
+    private fun fieldConstraints(row: Int, gridWidth: Int = 1, weightX: Double = 0.0): GridBagConstraints =
+        GridBagConstraints().apply {
+            gridx = 1
+            gridy = row
+            gridwidth = gridWidth
+            this.weightx = weightX
+            fill = GridBagConstraints.HORIZONTAL
+            insets = Insets(4, 0, 4, 0)
+        }
+
+    private fun choosePath() {
+        val chooser = JFileChooser((pathBox.selectedItem as? String)?.takeIf { it.isNotBlank() } ?: ".")
+        chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            pathBox.selectedItem = chooser.selectedFile.toPath().toAbsolutePath().normalize().toString()
+            repositoryField.text = repositoryField.text.ifBlank { chooser.selectedFile.name }
+        }
+    }
+
+    private fun runSync() {
+        val path = (pathBox.selectedItem as? String)?.trim().orEmpty()
+        val server = serverField.text.trim().trimEnd('/')
+        if (path.isBlank() || server.isBlank()) {
+            JOptionPane.showMessageDialog(this, "Server and repository path are required.", "Missing settings", JOptionPane.WARNING_MESSAGE)
+            return
+        }
+        val options = CliOptions(
+            server = server,
+            repository = repositoryField.text.trim().takeIf { it.isNotBlank() },
+            path = Path.of(path),
+            profile = SyncProfile.parse(profileBox.selectedItem.toString()),
+            full = fullCheck.isSelected,
+            dryRun = dryRunCheck.isSelected,
+            maxBatchBytes = maxBatchBytesField.text.trim().toIntOrNull()?.coerceAtLeast(250_000) ?: 4_000_000,
+            maxFileBytes = maxFileBytesField.text.trim().toLongOrNull()?.coerceAtLeast(10_000) ?: 1_000_000,
+        )
+        remember(server, path)
+        output.text = ""
+        runButton.isEnabled = false
+        object : SwingWorker<Unit, String>() {
+            override fun doInBackground() {
+                runRepositoryAgent(options) { publish(it) }
+            }
+
+            override fun process(chunks: MutableList<String>) {
+                chunks.forEach { line ->
+                    output.append(line)
+                    output.append(System.lineSeparator())
+                }
+                output.caretPosition = output.document.length
+            }
+
+            override fun done() {
+                runButton.isEnabled = true
+                runCatching { get() }.onFailure { error ->
+                    output.append("Error: ${error.cause?.message ?: error.message ?: "Sync failed"}${System.lineSeparator()}")
+                    output.caretPosition = output.document.length
+                }
+            }
+        }.execute()
+    }
+
+    private fun recentPaths(): List<String> {
+        val stored = preferences.get("recentPaths", "").split('|').filter { it.isNotBlank() }
+        val current = Path.of(".").toAbsolutePath().normalize().toString()
+        return (listOf(current) + stored).distinct().take(8)
+    }
+
+    private fun remember(server: String, path: String) {
+        preferences.put("server", server)
+        val paths = (listOf(path) + recentPaths()).distinct().take(8)
+        preferences.put("recentPaths", paths.joinToString("|"))
     }
 }
 
@@ -598,9 +787,11 @@ private fun usage(): String =
     RAG-e Khab Repository Agent
 
     Usage:
+      java -jar ragekhab-agent.jar
       java -jar ragekhab-agent.jar --server http://localhost:8060 --repository my-repo --path .
 
     Options:
+      --ui                      Open the desktop repository-agent UI
       --server URL              RAG-e Khab backend URL. Default: RAGEKHAB_URL or http://localhost:8060
       --repository NAME         Stable repository name. Default: scanned folder name
       --name NAME               Alias for --repository

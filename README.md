@@ -250,6 +250,14 @@ Build the agent JAR:
 gradle :agent:jar
 ```
 
+Open the desktop agent UI:
+
+```bash
+java -jar /path/to/RAGEKHAB/agent/build/libs/ragekhab-agent.jar
+```
+
+The UI lets you select the repository folder to scan, set the RAG-e Khab server URL, choose the sync profile, and run a dry run or full sync. Use `claude` for compact coding-agent context, and use `source` only when you intentionally want broad source-file indexing.
+
 Run it from any repository:
 
 ```bash
@@ -421,6 +429,48 @@ Panel changes are persisted to `runtime-settings.json` in the configured storage
 
 For recommended agent configuration, MCP connection examples, and copy-pasteable agent instructions, see [`AGENTS.md`](AGENTS.md).
 
+RAG-e Khab exposes JSON-RPC MCP over HTTP:
+
+```text
+http://localhost:8060/mcp
+```
+
+Agents that support HTTP MCP can use:
+
+```json
+{
+  "mcpServers": {
+    "rag-e-khab": {
+      "type": "http",
+      "url": "http://localhost:8060/mcp"
+    }
+  }
+}
+```
+
+Agents that only support stdio MCP need an HTTP-to-stdio MCP bridge or proxy, because RAG-e Khab serves MCP at `/mcp`.
+
+Suggested coding-agent instruction:
+
+```text
+You have access to RAG-e Khab through MCP.
+
+Before coding, use:
+1. recall_memory for project conventions, prior bug fixes, architecture decisions, and reusable patterns.
+2. optimize_context for the smallest useful repository context for the current task.
+3. search_documents when you need indexed documents or repository knowledge.
+
+Use repository_status to check what repositories are indexed.
+Pass the stable repository name, such as "RAGEKHAB", in repository-aware tool calls.
+Do not ask for raw production data. For Safe Debug work, use only sanitized artifacts and create_debug_data_request when more sanitized data is needed.
+```
+
+Example user prompt for a coding agent:
+
+```text
+Before editing, use RAG-e Khab MCP. First call recall_memory for this task, then call optimize_context with repository "RAGEKHAB", then use that context to implement the change.
+```
+
 The MCP JSON-RPC endpoint supports:
 
 - `search_documents`
@@ -446,6 +496,42 @@ The MCP JSON-RPC endpoint supports:
 - `get_debug_session_state`
 - `resolve_debug_token`
 - `record_claude_request`
+
+Recommended coding flow:
+
+1. Call `repository_status` to confirm the repository name and last sync.
+2. Call `recall_memory` with the task and repository.
+3. Call `optimize_context` with the task, repository, and token budget.
+4. Call `search_documents` only if the optimized context points to missing or ambiguous knowledge.
+5. After a reusable lesson is learned, propose a sanitized `remember` call for developer approval.
+
+Tool guide:
+
+| Tool | What it does | When a coding agent should call it |
+| --- | --- | --- |
+| `repository_status` | Returns synchronized repositories, tracked files, deleted files, and last sync times. | First, to discover the exact repository name to pass to other tools. |
+| `recall_memory` | Retrieves durable project memories ranked for a task. | Before coding, reviewing, or debugging so prior decisions and conventions shape the work. |
+| `optimize_context` | Retrieves and trims the smallest useful context for a task, with token savings. | Before opening many files locally; use it to decide what to inspect. |
+| `search_documents` | Semantic search over indexed documents and repository context. | When a task needs extra knowledge beyond optimized context. |
+| `ask_knowledge_base` | Answers a question with sources from indexed knowledge. | When the agent needs a cited explanation rather than raw context snippets. |
+| `remember` | Stores a structured long-term memory. | After the developer approves a reusable, sanitized lesson. |
+| `list_memories` | Lists stored memories, optionally by project. | When auditing or checking what durable knowledge already exists. |
+| `delete_memory` | Deletes a memory by id. | When obsolete or incorrect memory should be removed. |
+| `scan_repository` | Triggers server-side repository scanning for a backend-accessible path. | Only when the backend can access the path; otherwise use the desktop/JAR agent. |
+| `create_project` | Creates a project grouping for documents and memories. | When setting up a new project workspace. |
+| `list_projects` | Lists project groups. | When choosing a `projectId` for scoped calls. |
+| `add_text` | Adds pasted text as knowledge. | When the developer provides safe notes, docs, or design context to index. |
+| `list_documents` | Lists indexed documents. | When auditing available knowledge or choosing a document id. |
+| `get_document` | Returns document metadata and chunks. | When exact stored chunks from a known document are needed. |
+| `delete_document` | Deletes a document and indexed chunks. | When stale or incorrect indexed knowledge should be removed. |
+| `list_debug_sessions` | Lists Safe Debug Sessions. | At the start of a production-like debugging task. |
+| `get_debug_session_context` | Returns sanitized Safe Debug artifacts and token names only. | When reading sanitized investigation data. |
+| `get_debug_session_state` | Returns sanitized artifacts, request summaries, timeline, and notes. | Preferred Safe Debug inspection tool when debugging needs session state. |
+| `create_debug_data_request` | Creates a structured request for more sanitized data. | When more data is needed; never ask for raw rows or PII in chat. |
+| `list_debug_data_requests` | Lists Safe Debug data request statuses. | To check whether requested sanitized follow-up data is ready. |
+| `record_claude_request` | Records a free-form request in a Safe Debug Session. | Fallback when structured data requests are not expressive enough. |
+| `resolve_debug_token` | Sensitive local-only token resolution helper for developer use. | Agents should avoid it unless explicitly instructed; it can expose real identifiers locally. |
+| `learn_from_session` | Reserved future tool for extracting reusable lessons from a completed session. | Do not rely on it yet. |
 
 Safe Debug MCP tools never return raw pasted data, token real values, or UI-generated SQL with real IDs. `resolve_debug_token` is marked as sensitive and is limited to database identifier tokens so the developer can manually query follow-up data.
 
