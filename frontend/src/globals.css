@@ -1,44 +1,5 @@
 :root {
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --app-card-bg: var(--mantine-color-white);
-  --app-card-subtle-bg: var(--mantine-color-gray-0);
-  --app-card-border: var(--mantine-color-gray-3);
-  --app-text: var(--mantine-color-gray-9);
-  --app-muted: var(--mantine-color-gray-7);
-  --app-chip-bg: var(--mantine-color-gray-1);
-  --app-chip-text: var(--mantine-color-gray-8);
-  --app-green-bg: var(--mantine-color-green-0);
-  --app-green-text: var(--mantine-color-green-8);
-  --app-green-border: var(--mantine-color-green-3);
-  --app-red-bg: var(--mantine-color-red-0);
-  --app-red-text: var(--mantine-color-red-8);
-  --app-blue-bg: var(--mantine-color-blue-0);
-  --app-blue-text: var(--mantine-color-blue-8);
-  --app-teal-bg: var(--mantine-color-teal-0);
-  --app-teal-text: var(--mantine-color-teal-8);
-  --app-yellow-bg: var(--mantine-color-yellow-0);
-  --app-yellow-text: var(--mantine-color-yellow-9);
-}
-
-[data-mantine-color-scheme='dark'] {
-  --app-card-bg: var(--mantine-color-dark-7);
-  --app-card-subtle-bg: var(--mantine-color-dark-6);
-  --app-card-border: var(--mantine-color-dark-4);
-  --app-text: var(--mantine-color-dark-0);
-  --app-muted: var(--mantine-color-dark-2);
-  --app-chip-bg: var(--mantine-color-dark-5);
-  --app-chip-text: var(--mantine-color-dark-0);
-  --app-green-bg: rgba(64, 192, 87, 0.12);
-  --app-green-text: var(--mantine-color-green-2);
-  --app-green-border: var(--mantine-color-green-8);
-  --app-red-bg: rgba(250, 82, 82, 0.14);
-  --app-red-text: var(--mantine-color-red-2);
-  --app-blue-bg: rgba(34, 139, 230, 0.14);
-  --app-blue-text: var(--mantine-color-blue-2);
-  --app-teal-bg: rgba(18, 184, 134, 0.14);
-  --app-teal-text: var(--mantine-color-teal-2);
-  --app-yellow-bg: rgba(250, 176, 5, 0.14);
-  --app-yellow-text: var(--mantine-color-yellow-2);
 }
 
 * {
@@ -60,20 +21,6 @@ body {
   display: grid;
   gap: var(--mantine-spacing-lg);
   align-content: start;
-}
-
-.view,
-.settingsSections,
-.activityList,
-.documentList,
-.answers,
-.promptList,
-.debugArtifactList,
-.debugWarningList,
-.debugMiniList,
-.contextStack {
-  display: grid;
-  gap: var(--mantine-spacing-md);
 }
 
 .mantineNavbar {
@@ -100,6 +47,19 @@ body {
 @keyframes loadingSlide {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(280%); }
+}
+
+.view,
+.settingsSections,
+.activityList,
+.documentList,
+.answers,
+.debugArtifactList,
+.debugWarningList,
+.debugMiniList,
+.contextStack {
+  display: grid;
+  gap: var(--mantine-spacing-md);
 }
 
 .surfaceHeader {
@@ -143,29 +103,6 @@ body {
   text-transform: uppercase;
 }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  width: fit-content;
-  max-width: 100%;
-  min-height: 26px;
-  padding: 0 10px;
-  border: 1px solid var(--app-card-border);
-  border-radius: 999px;
-  color: var(--app-muted);
-  background: var(--app-card-subtle-bg);
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.badge.success {
-  color: var(--app-green-text);
-  border-color: var(--app-green-border);
-  background: var(--app-green-bg);
-}
-
 .statusDot {
   width: 8px;
   height: 8px;
@@ -175,12 +112,6 @@ body {
 
 .statusDot.online {
   background: var(--mantine-color-green-6);
-}
-
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--mantine-spacing-md);
 }
 
 .metric {
@@ -197,7 +128,7 @@ body {
   height: 32px;
   border-radius: var(--mantine-radius-sm);
   color: var(--mantine-color-teal-7);
-  background: var(--app-teal-bg);
+  background: var(--mantine-color-teal-light);
 }
 
 .metric span,
@@ -211,7 +142,6 @@ body {
 .projectCard small,
 .repoCard span,
 .repoCard small,
-.memoryMeta,
 .debugSessionRow span,
 .debugSessionRow small,
 .debugHeader p,
@@ -290,26 +220,9 @@ body {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: var(--mantine-spacing-sm);
   align-items: center;
-  padding: var(--mantine-spacing-sm);
-}
-
-.activityRow strong,
-.activityRow span,
-.repoCard strong,
-.repoCard span,
-.documentRow strong,
-.documentRow span,
-.sourceDetail,
-.memoryCard,
-.debugRequestCard,
-.debugSessionRow,
-.debugTableRow,
-.contextLine {
-  overflow-wrap: anywhere;
 }
 
 .repoToolbar,
-.repoCard,
 .repoCardHeader,
 .repoActions,
 .repoStatusStack,
@@ -333,32 +246,16 @@ body {
   flex: 1;
 }
 
-.repositoryList,
-.memoryGrid,
-.projectGrid {
+.repoCard,
+.memoryCard,
+.debugRequestCard {
   display: grid;
   gap: var(--mantine-spacing-md);
-}
-
-.memoryGrid {
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-}
-
-.projectGrid {
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-}
-
-.repoCard {
-  display: grid;
-  gap: var(--mantine-spacing-md);
+  align-content: start;
 }
 
 .repoStats {
   max-width: 360px;
-}
-
-.repoDetails {
-  color: var(--mantine-color-dimmed);
 }
 
 .repoDetails summary,
@@ -442,15 +339,7 @@ body {
   grid-column: 1 / -1;
 }
 
-.memoryCard {
-  display: grid;
-  gap: var(--mantine-spacing-sm);
-  align-content: start;
-}
-
 .memoryCardHeader,
-.memoryMeta,
-.sourceChips,
 .sources {
   display: flex;
   gap: var(--mantine-spacing-xs);
@@ -460,42 +349,6 @@ body {
 
 .memoryCardHeader {
   justify-content: space-between;
-}
-
-.memoryType,
-.memoryMeta span,
-.sourceChips span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  background: var(--app-chip-bg);
-  color: var(--app-chip-text);
-}
-
-.memoryType.BugFix {
-  background: var(--app-red-bg);
-  color: var(--app-red-text);
-}
-
-.memoryType.CodingConvention {
-  background: var(--app-blue-bg);
-  color: var(--app-blue-text);
-}
-
-.memoryType.Pattern,
-.memoryType.ProjectKnowledge,
-.memoryType.DomainKnowledge {
-  background: var(--app-teal-bg);
-  color: var(--app-teal-text);
-}
-
-.memoryType.TechnicalDebt {
-  background: var(--app-yellow-bg);
-  color: var(--app-yellow-text);
 }
 
 .dropZone {
@@ -537,10 +390,10 @@ body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: var(--mantine-spacing-sm);
-  border: 1px solid var(--app-card-border);
+  border: 1px solid var(--mantine-color-default-border);
   border-radius: var(--mantine-radius-sm);
-  background: var(--app-card-subtle-bg);
-  color: var(--app-text);
+  background: var(--mantine-color-default-hover);
+  color: var(--mantine-color-text);
   line-height: 1.5;
 }
 
@@ -548,17 +401,6 @@ body {
   min-height: 260px;
   max-height: 420px;
   overflow: auto;
-}
-
-.debugRequestGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--mantine-spacing-md);
-}
-
-.debugRequestCard {
-  display: grid;
-  gap: var(--mantine-spacing-sm);
 }
 
 .debugRequestHeader,
@@ -582,7 +424,7 @@ body {
   gap: var(--mantine-spacing-sm);
   min-width: 720px;
   padding: var(--mantine-spacing-xs) 0;
-  border-bottom: 1px solid var(--app-card-border);
+  border-bottom: 1px solid var(--mantine-color-default-border);
 }
 
 .debugTableHead {
@@ -603,7 +445,7 @@ body {
   max-width: min(78%, 760px);
   padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
   border-radius: var(--mantine-radius-sm);
-  background: var(--mantine-color-teal-6);
+  background: var(--mantine-color-teal-filled);
   color: var(--mantine-color-white);
 }
 
@@ -645,43 +487,8 @@ body {
 .settingHint {
   padding: var(--mantine-spacing-sm);
   border-radius: var(--mantine-radius-sm);
-  background: var(--app-yellow-bg);
-  color: var(--app-yellow-text);
-}
-
-.toastStack {
-  position: fixed;
-  top: var(--mantine-spacing-md);
-  right: var(--mantine-spacing-md);
-  z-index: 1000;
-  display: grid;
-  gap: var(--mantine-spacing-sm);
-  width: min(420px, calc(100vw - 32px));
-}
-
-.toast {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--mantine-spacing-sm);
-  align-items: start;
-  padding: var(--mantine-spacing-sm);
-  border: 1px solid var(--app-card-border);
-  border-radius: var(--mantine-radius-sm);
-  background: var(--app-card-bg);
-  box-shadow: var(--mantine-shadow-md);
-}
-
-.toast span {
-  display: block;
-  color: var(--mantine-color-dimmed);
-}
-
-.toast.success > svg {
-  color: var(--mantine-color-green-6);
-}
-
-.toast.error > svg {
-  color: var(--mantine-color-red-6);
+  background: var(--mantine-color-yellow-light);
+  color: var(--mantine-color-yellow-light-color);
 }
 
 .empty {
@@ -696,14 +503,10 @@ body {
 }
 
 .richEmpty strong {
-  color: var(--app-text);
+  color: var(--mantine-color-text);
 }
 
 @media (max-width: 1100px) {
-  .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .homeGrid,
   .knowledgeLayout,
   .chatLayout,
@@ -720,7 +523,6 @@ body {
     gap: var(--mantine-spacing-md);
   }
 
-  .metrics,
   .compactState,
   .stateGrid,
   .repoStats,
