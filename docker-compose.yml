@@ -1,4 +1,24 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    networks:
+      default:
+        aliases:
+          - postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ragekhab}
+      POSTGRES_USER: ${POSTGRES_USER:-ragekhab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ragekhab}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   qdrant:
     image: qdrant/qdrant:latest
     ports:
@@ -13,8 +33,10 @@ services:
       dockerfile: Dockerfile.backend
     environment:
       SERVER_PORT: 8060
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${POSTGRES_HOST:-postgres}:5432/${POSTGRES_DB:-ragekhab}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-ragekhab}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-ragekhab}
       QDRANT_URL: http://qdrant:6333
-      RAGEKHAB_STORAGE_DIR: /app/data/documents
       RAGEKHAB_LLM_PROVIDER: ${RAGEKHAB_LLM_PROVIDER:-ollama}
       RAGEKHAB_LLM_MODEL: ${RAGEKHAB_LLM_MODEL:-llama3.1}
       RAGEKHAB_LLM_BASE_URL: ${RAGEKHAB_LLM_BASE_URL:-http://host.docker.internal:11434}
@@ -31,16 +53,16 @@ services:
     ports:
       - "8060:8060"
     depends_on:
-      - qdrant
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8060/actuator/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 30s
-    volumes:
-      - document_data:/app/data/documents
-
   frontend:
     build:
       context: .
@@ -52,5 +74,5 @@ services:
         condition: service_healthy
 
 volumes:
+  postgres_data:
   qdrant_data:
-  document_data:

@@ -16,9 +16,12 @@ flowchart TD
     F --> G[Qdrant Vector Store]
 
     C --> H[Memory Store]
+    C --> S[Safe Debug Sessions]
 
     I[Claude Code] --> J[MCP Tools]
     J --> C
+    J -->|Debug Requests| S
+    S -->|Approved Lessons| H
 
     C --> K[Context Optimizer]
 
@@ -71,16 +74,24 @@ Then open:
 
 - UI: `http://localhost:5173`
 - REST API: `http://localhost:8060/api`
+- OpenAPI JSON: `http://localhost:8060/v3/api-docs/rest-api`
+- Swagger UI: `http://localhost:8060/swagger-ui.html`
 - MCP endpoint: `http://localhost:8060/mcp`
 - Qdrant: `http://localhost:6333`
 
-For local backend development:
+For local app development, start only the Docker backing services:
+
+```bash
+docker compose up -d qdrant
+```
+
+Then run the backend locally:
 
 ```bash
 gradle :backend:bootRun
 ```
 
-For local frontend development:
+And run the frontend locally:
 
 ```bash
 cd frontend
@@ -100,6 +111,11 @@ npm run dev
 The frontend has been moved out of the old single-file entrypoint shape. `App.tsx` is still intentionally conservative for now; the next natural split is feature folders such as `features/safe-debug`, `features/memories`, and `features/repositories`.
 
 ## REST API
+
+OpenAPI docs are generated for REST endpoints under `/api/**`:
+
+- JSON spec: `GET /v3/api-docs/rest-api`
+- Swagger UI: `GET /swagger-ui.html`
 
 - `POST /api/documents` multipart upload with field `file`
 - `POST /api/texts` with `{ "title": "...", "text": "...", "projectId": "..." }`

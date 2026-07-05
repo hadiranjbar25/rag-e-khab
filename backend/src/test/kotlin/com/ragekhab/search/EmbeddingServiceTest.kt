@@ -3,6 +3,7 @@ package com.ragekhab.search
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ragekhab.config.RagEKhabProperties
 import com.ragekhab.config.RuntimeSettingsService
+import com.ragekhab.testStateStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -51,7 +52,7 @@ class EmbeddingServiceTest {
                     dimensions = 384,
                 ),
             ),
-            mapper = ObjectMapper(),
+            state = testStateStore(),
         )
 
     private class FakeOllamaEmbeddingClient(

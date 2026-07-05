@@ -4,7 +4,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "ragekhab")
 data class RagEKhabProperties(
-    val storageDir: String = "./data/documents",
     val llm: Llm = Llm(),
     val localLlm: LocalLlm = LocalLlm(),
     val embedding: Embedding = Embedding(),

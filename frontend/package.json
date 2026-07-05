@@ -9,6 +9,10 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
+    "@mantine/core": "^9.4.1",
+    "@mantine/hooks": "^9.4.1",
+    "@mantine/modals": "^9.4.1",
+    "@mantine/notifications": "^9.4.1",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest"
@@ -17,7 +21,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vite": "latest"
   }
 }

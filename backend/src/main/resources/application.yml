@@ -8,6 +8,11 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ragekhab}
+    username: ${SPRING_DATASOURCE_USERNAME:ragekhab}
+    password: ${SPRING_DATASOURCE_PASSWORD:ragekhab}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.postgresql.Driver}
 
 management:
   endpoints:
@@ -16,7 +21,6 @@ management:
         include: health,info,metrics
 
 ragekhab:
-  storage-dir: ${RAGEKHAB_STORAGE_DIR:./data/documents}
   llm:
     provider: ${RAGEKHAB_LLM_PROVIDER:ollama}
     model: ${RAGEKHAB_LLM_MODEL:llama3.1}

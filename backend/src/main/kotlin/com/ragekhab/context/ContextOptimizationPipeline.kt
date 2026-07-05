@@ -25,7 +25,8 @@ class ContextOptimizationPipeline(
         val scope = request.repository?.trim()?.takeIf { it.isNotBlank() }
         val module = request.module?.trim()?.takeIf { it.isNotBlank() }
         val projectId = resolveProjectId(request.projectId, scope, module)
-        val candidates = searchService.search(task, request.candidateLimit.coerceIn(8, 30), projectId)
+        val candidateLimit = (request.candidateLimit ?: 30).coerceIn(8, 30)
+        val candidates = searchService.search(task, candidateLimit, projectId)
             .filterByScope(scope, module)
         val taskTerms = task.normalizedTerms()
         val ranked = candidates
@@ -77,7 +78,10 @@ class ContextOptimizationPipeline(
     }
 
     private fun resolveProjectId(projectId: String?, repository: String?, module: String?): UUID? {
-        projectId?.takeIf { it.isNotBlank() }?.let { return UUID.fromString(it) }
+        projectId?.takeIf { it.isNotBlank() }?.let {
+            return runCatching { UUID.fromString(it) }
+                .getOrElse { throw IllegalArgumentException("projectId must be a valid UUID.") }
+        }
         val scope = repository ?: module ?: return null
         return projectService.list()
             .firstOrNull { it.name.equals(scope, ignoreCase = true) }
