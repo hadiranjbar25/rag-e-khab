@@ -20,6 +20,7 @@ import {
   ScrollArea,
   SegmentedControl,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   Textarea,
@@ -28,6 +29,7 @@ import {
   Title,
   useMantineColorScheme,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
   AlertCircle,
   Archive,
@@ -55,7 +57,6 @@ import {
   Sun,
   Trash2,
   Upload,
-  X,
   Zap
 } from 'lucide-react';
 
@@ -319,13 +320,6 @@ type SanitizeDebugResponse = {
   tokenMappings: DebugTokenMapping[];
 };
 
-type Toast = {
-  id: string;
-  type: 'success' | 'error';
-  title: string;
-  message?: string;
-};
-
 type View = 'home' | 'repositories' | 'memories' | 'knowledge' | 'safeDebug' | 'optimizer' | 'settings' | 'chat';
 type IngestMode = 'upload' | 'text';
 
@@ -355,6 +349,13 @@ const memoryLabels: Record<string, string> = {
   ProjectKnowledge: 'Project',
   DomainKnowledge: 'Domain',
   TechnicalDebt: 'Debt'
+};
+
+const memoryBadgeColor = (type: string) => {
+  if (type === 'BugFix') return 'red';
+  if (type === 'CodingConvention') return 'blue';
+  if (type === 'TechnicalDebt') return 'yellow';
+  return 'teal';
 };
 
 const safeDebugInstruction = `You are connected to a Safe Debug Session.
@@ -499,18 +500,17 @@ export default function App() {
   const [activeSource, setActiveSource] = useState<SearchResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<Toast[]>([]);
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
 
-  const dismissToast = (id: string) => {
-    setToasts((items) => items.filter((toast) => toast.id !== id));
-  };
-
-  const showToast = (toast: Omit<Toast, 'id'>) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setToasts((items) => [{ ...toast, id }, ...items].slice(0, 4));
-    window.setTimeout(() => dismissToast(id), toast.type === 'error' ? 6500 : 4200);
+  const showToast = (toast: { type: 'success' | 'error'; title: string; message?: string }) => {
+    notifications.show({
+      color: toast.type === 'success' ? 'teal' : 'red',
+      title: toast.title,
+      message: toast.message,
+      icon: toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />,
+      autoClose: toast.type === 'error' ? 6500 : 4200,
+    });
   };
 
   const reportError = (err: unknown, fallback: string) => {
@@ -1217,23 +1217,6 @@ export default function App() {
       className={busy ? 'mantineShell isBusy' : 'mantineShell'}
     >
       <LoadingOverlay visible={busy} overlayProps={{ radius: 'sm', blur: 1 }} />
-      <div className="toastStack" aria-live="polite" aria-atomic="true">
-        {toasts.map((toast) => {
-          const Icon = toast.type === 'success' ? CheckCircle2 : AlertCircle;
-          return (
-            <div className={`toast ${toast.type}`} key={toast.id}>
-              <Icon size={18} />
-              <div>
-                <strong>{toast.title}</strong>
-                {toast.message && <span>{toast.message}</span>}
-              </div>
-              <ActionIcon variant="subtle" color="gray" className="toastClose" onClick={() => dismissToast(toast.id)} aria-label="Dismiss notification">
-                <X size={15} />
-              </ActionIcon>
-            </div>
-          );
-        })}
-      </div>
 
       <AppShell.Navbar className="mantineNavbar">
         <Stack gap="lg" h="100%">
@@ -1312,7 +1295,7 @@ export default function App() {
               </div>
             </Paper>
 
-            <div className="metrics">
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
               {stats.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -1324,14 +1307,14 @@ export default function App() {
                 </Paper>
                 );
               })}
-            </div>
+            </SimpleGrid>
 
             <div className="homeGrid">
               <Paper component="section" className="surface quietSurface" p="md" radius="sm" withBorder>
-                <div className="surfaceHeader">
+                  <Group justify="space-between" align="center" mb="md">
                   <h2>System health</h2>
-                  <span className="badge success"><CheckCircle2 size={14} /> operational</span>
-                </div>
+                  <Badge color="green" variant="light" leftSection={<CheckCircle2 size={14} />}>operational</Badge>
+                </Group>
                 <div className="compactState">
                   <div><span>Last sync</span><strong>{lastSync ? new Date(lastSync).toLocaleString() : 'No sync yet'}</strong></div>
                   <div><span>Optimizer</span><strong>{settingsDraft?.optimizer.mode ?? 'retrieval'} · {settingsDraft?.optimizer.maxTokens ?? 3000} tokens</strong></div>
@@ -1384,12 +1367,12 @@ export default function App() {
                     searchable
                     clearable
                   />
-                  <Button onClick={() => linkRepositoryToProject()} disabled={busy || !repositoryToLink}>Link</Button>
+                  <Button variant="light" color="teal" onClick={() => linkRepositoryToProject()} disabled={busy || !repositoryToLink}>Link</Button>
                 </Group>
               </details>
             </Paper>
 
-            <div className="repositoryList">
+            <Stack gap="md">
               {(repositories.length > 0 ? repositories : (repositoryStatus?.repositories ?? []).map((repo) => ({
                 id: repo.repositoryId,
                 name: repo.repository,
@@ -1422,7 +1405,7 @@ export default function App() {
 	                    {linked ? (
 	                      <Button variant="subtle" color="gray" onClick={() => unlinkRepositoryFromProject(repo.id)} disabled={busy}>Remove</Button>
 	                    ) : (
-	                      <Button onClick={() => linkRepositoryToProject(repo.id)} disabled={busy}>Link to project</Button>
+	                      <Button variant="light" color="teal" onClick={() => linkRepositoryToProject(repo.id)} disabled={busy}>Link to project</Button>
 	                    )}
 	                    <Menu shadow="md" width={210} position="bottom-end">
 	                      <Menu.Target>
@@ -1447,7 +1430,7 @@ export default function App() {
                 );
               })}
               {repositories.length === 0 && (repositoryStatus?.repositories.length ?? 0) === 0 && <div className="empty richEmpty"><strong>No repositories yet</strong><span>Run the RAG-e Khab agent from a codebase to register a repository, then link it to this project.</span></div>}
-            </div>
+            </Stack>
 
 	            <details className="advancedPanel">
 	              <summary>Repository deletion options</summary>
@@ -1468,7 +1451,7 @@ export default function App() {
 	                  <Button onClick={createProject} disabled={busy || !projectName.trim()} title="Create project" leftSection={<FolderPlus size={18} />}>Create</Button>
 	                </Group>
 	              </div>
-              <div className="projectGrid">
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
                 {projects.map((project) => (
                   <Paper component="article" className={project.id === selectedProjectId ? 'projectCard active' : 'projectCard'} key={project.id} p="md" radius="sm" withBorder>
                   <div>
@@ -1488,7 +1471,7 @@ export default function App() {
 	                  </div>
                   </Paper>
                 ))}
-              </div>
+              </SimpleGrid>
             </details>
           </section>
         )}
@@ -1576,15 +1559,15 @@ export default function App() {
                       label: `${memoryLabels[memory.type] ?? memory.type}: ${memory.content.slice(0, 70)}`,
                     }))}
                 />
-                <Button onClick={linkMemoryToProject} disabled={busy || !memoryToLink}>Link</Button>
+                <Button variant="light" color="teal" onClick={linkMemoryToProject} disabled={busy || !memoryToLink}>Link</Button>
               </div>
             </Paper>
 
-            <div className="memoryGrid">
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3, xl: 4 }} spacing="md">
               {pagedMemories.map((memory) => (
                 <Paper component="article" className="memoryCard" key={memory.id} p="md" radius="sm" withBorder>
                   <div className="memoryCardHeader">
-                    <span className={`memoryType ${memory.type}`}>{memoryLabels[memory.type] ?? memory.type}</span>
+                    <Badge color={memoryBadgeColor(memory.type)} variant="light">{memoryLabels[memory.type] ?? memory.type}</Badge>
                     <Menu shadow="md" width={190} position="bottom-end">
                       <Menu.Target>
                         <Button variant="subtle" size="compact-sm">More</Button>
@@ -1596,14 +1579,14 @@ export default function App() {
                     </Menu>
                   </div>
                   <p>{memory.content}</p>
-                  <div className="memoryMeta">
-                    <span>{Math.round(memory.confidence * 100)}% confidence</span>
-                    <span>{memory.repository ?? 'global'}</span>
-                  </div>
+                  <Group gap="xs">
+                    <Badge color="gray" variant="light">{Math.round(memory.confidence * 100)}% confidence</Badge>
+                    <Badge color="gray" variant="outline">{memory.repository ?? 'global'}</Badge>
+                  </Group>
                 </Paper>
               ))}
               {filteredMemories.length === 0 && <div className="empty richEmpty"><strong>No memories in this view</strong><span>Use the MCP `remember` tool to store architecture decisions, conventions, bug fixes, patterns, and project knowledge.</span></div>}
-            </div>
+            </SimpleGrid>
           </section>
         )}
 
@@ -1686,7 +1669,7 @@ export default function App() {
                       <small>Created {new Date(session.createdAt).toLocaleString()}</small>
                       <small>Updated {new Date(session.updatedAt).toLocaleString()}</small>
                     </div>
-	                    <span className={session.status === 'active' ? 'badge success' : 'badge'}>{session.status}</span>
+	                    <Badge color={session.status === 'active' ? 'green' : 'gray'} variant="light">{session.status}</Badge>
 	                    <div className="debugRowActions">
 	                      <Button variant="subtle" color="gray" onClick={() => openDebugSession(session.id)} disabled={busy}>Open</Button>
 	                      <ActionIcon variant="light" color="gray" onClick={() => archiveDebugSession(session.id)} disabled={busy} title="Archive session"><Archive size={17} /></ActionIcon>
@@ -1715,7 +1698,7 @@ export default function App() {
                       <p>{debugDetail.session.id}</p>
                     </div>
                     <div className="debugHeaderMeta">
-                      <span className={debugDetail.session.status === 'active' ? 'badge success' : 'badge'}>{debugDetail.session.status}</span>
+                      <Badge color={debugDetail.session.status === 'active' ? 'green' : 'gray'} variant="light">{debugDetail.session.status}</Badge>
                       <small>Created {new Date(debugDetail.session.createdAt).toLocaleString()}</small>
                     </div>
                   </Paper>
@@ -1725,7 +1708,7 @@ export default function App() {
                       <h2>Pending Claude Requests</h2>
                       <span>{pendingDebugRequests.length} pending</span>
                     </div>
-                    <div className="debugRequestGrid">
+                    <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
                       {debugDetail.dataRequests.map((item) => {
                         const mapping = tokenMappingFor(item.parentToken);
                         const suggestedSql = suggestedSqlFor(item);
@@ -1736,7 +1719,7 @@ export default function App() {
                                 <strong>{item.entity}</strong>
                                 <span>{item.relation || 'No relation'}{item.parentToken ? ` · ${item.parentToken}` : ''}</span>
                               </div>
-                              <span className={item.status === 'pending' ? 'badge success' : 'badge'}>{item.status}</span>
+                              <Badge color={item.status === 'pending' ? 'green' : 'gray'} variant="light">{item.status}</Badge>
                             </div>
                             <p>{item.reason}</p>
                             {item.requestedFields.length > 0 && <small>Fields: {item.requestedFields.join(', ')}</small>}
@@ -1751,7 +1734,7 @@ export default function App() {
                         );
                       })}
                       {debugDetail.dataRequests.length === 0 && <div className="empty">Claude has not created any structured data requests yet.</div>}
-                    </div>
+                    </SimpleGrid>
                   </Paper>
 
                   <section className="debugTwoColumn">
@@ -1976,9 +1959,9 @@ export default function App() {
                       {optimizedContext.criticalContext.map((item) => <p className="contextLine" key={item}>{item}</p>)}
                     </div>
                   </div>
-                  <div className="sourceChips">
-                    {optimizedContext.sources.map((source) => <span key={source}>{source}</span>)}
-                  </div>
+                  <Group gap="xs">
+                    {optimizedContext.sources.map((source) => <Badge key={source} color="gray" variant="light">{source}</Badge>)}
+                  </Group>
                   {optimizedContext.importantContext.length > 0 && (
                     <details className="advancedPanel optionalContext">
                       <summary>Show supporting context</summary>

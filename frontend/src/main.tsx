@@ -6,7 +6,7 @@ import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import App from './App';
-import './styles.css';
+import './globals.css';
 
 const theme = createTheme({
   primaryColor: 'teal',
