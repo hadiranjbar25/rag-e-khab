@@ -1,5 +1,6 @@
 package com.ragekhab.repository
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.Instant
 import java.util.UUID
 
@@ -104,4 +105,100 @@ data class RepositoryAgentStatus(
     val lastIndexedAt: Instant?,
     val repositories: List<RepositoryAgentRepositoryStatus>,
     val files: List<RepositoryFileMetadata>,
+)
+
+enum class ContextLevel {
+    repo_overview,
+    module_overview,
+    package_overview,
+    class_summary,
+    method_detail,
+    dependency_chain,
+    related_tests,
+    source_snippet,
+}
+
+data class SourceSnippetRequest(
+    val filePath: String? = null,
+    @param:JsonProperty("class")
+    @get:JsonProperty("class")
+    val className: String? = null,
+    val method: String? = null,
+    val startLine: Int? = null,
+    val endLine: Int? = null,
+)
+
+data class ContextRequest(
+    val repoId: String? = null,
+    val repository: String? = null,
+    val task: String,
+    val maxTokens: Int = 6_000,
+    val includeTests: Boolean = true,
+    val includeRawSource: Boolean = false,
+    val levels: List<ContextLevel> = emptyList(),
+    val sourceSnippet: SourceSnippetRequest? = null,
+    val filePath: String? = null,
+    @param:JsonProperty("class")
+    @get:JsonProperty("class")
+    val className: String? = null,
+    val method: String? = null,
+    val startLine: Int? = null,
+    val endLine: Int? = null,
+)
+
+data class CompactClassSummary(
+    @param:JsonProperty("class")
+    @get:JsonProperty("class")
+    val className: String,
+    val role: String,
+    val path: String,
+    val purpose: String,
+    val publicMethods: List<String>,
+    val dependsOn: List<String>,
+    val usedBy: List<String>,
+    val relatedTests: List<String>,
+)
+
+data class RelatedTestSummary(
+    val name: String,
+    val path: String,
+    val covers: List<String>,
+)
+
+data class RelatedTestContext(
+    @param:JsonProperty("class")
+    @get:JsonProperty("class")
+    val className: String,
+    val tests: List<RelatedTestSummary>,
+)
+
+data class SourceSnippet(
+    val filePath: String,
+    val startLine: Int,
+    val endLine: Int,
+    val text: String,
+)
+
+data class ContextDebugSelection(
+    val file: String,
+    val reason: String,
+    val score: Double,
+)
+
+data class ContextPackage(
+    val summary: String,
+    val estimatedTokens: Int,
+    val repoOverview: String? = null,
+    val relevantClasses: List<CompactClassSummary> = emptyList(),
+    val dependencyChains: List<String> = emptyList(),
+    val relatedTests: List<RelatedTestContext> = emptyList(),
+    val projectConventions: List<String> = emptyList(),
+    val sourceSnippets: List<SourceSnippet> = emptyList(),
+    val debug: List<ContextDebugSelection> = emptyList(),
+)
+
+data class RepositoryMemory(
+    val repository: String,
+    val conventions: List<String>,
+    val updatedAt: Instant,
 )

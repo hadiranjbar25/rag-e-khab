@@ -50,14 +50,7 @@ body {
 }
 
 .view,
-.settingsSections,
-.activityList,
-.documentList,
-.answers,
-.debugArtifactList,
-.debugWarningList,
-.debugMiniList,
-.contextStack {
+.settingsSections {
   display: grid;
   gap: var(--mantine-spacing-md);
 }
@@ -78,14 +71,12 @@ body {
 
 .surfaceHeader h2,
 .commandPanel h2,
-.repoToolbar h2,
 .memoryComposer h2 {
   margin: 0;
   font-size: 1.05rem;
 }
 
 .surfaceHeader p,
-.repoToolbar p,
 .memoryToolbar p,
 .memoryComposer p,
 .commandPanel p {
@@ -151,65 +142,12 @@ body {
 .debugArtifactList span,
 .debugArtifactList small,
 .debugWarningList span,
-.debugTableHead,
-.adminGrid span,
 .settingsGrid label span {
   color: var(--mantine-color-dimmed);
 }
 
 .metric strong {
   font-size: 1.6rem;
-}
-
-.homeGrid,
-.knowledgeLayout,
-.chatLayout,
-.optimizerLayout,
-.debugTwoColumn {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
-  gap: var(--mantine-spacing-lg);
-  align-items: start;
-}
-
-.knowledgeLayout,
-.optimizerLayout {
-  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
-}
-
-.safeDebugLayout {
-  display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-  gap: var(--mantine-spacing-lg);
-  align-items: start;
-}
-
-.safeDebugColumn,
-.safeDebugDetail {
-  display: grid;
-  gap: var(--mantine-spacing-md);
-}
-
-.compactState,
-.stateGrid,
-.repoStats,
-.optimizerHints,
-.optimizedHero,
-.adminGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--mantine-spacing-sm);
-}
-
-.compactState div,
-.stateGrid div,
-.repoStats div,
-.optimizerHints div,
-.optimizedHero div,
-.adminGrid div {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
 }
 
 .activityRow,
@@ -222,40 +160,12 @@ body {
   align-items: center;
 }
 
-.repoToolbar,
-.repoCardHeader,
-.repoActions,
-.repoStatusStack,
-.projectActions,
-.debugRowActions,
-.debugInlineActions,
-.debugRequestActions {
-  display: flex;
-  gap: var(--mantine-spacing-sm);
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.repoToolbar {
-  justify-content: space-between;
-}
-
-.repoToolbar > div:first-child,
-.repoCardHeader > div:first-child {
-  min-width: min(100%, 320px);
-  flex: 1;
-}
-
 .repoCard,
 .memoryCard,
 .debugRequestCard {
   display: grid;
   gap: var(--mantine-spacing-md);
   align-content: start;
-}
-
-.repoStats {
-  max-width: 360px;
 }
 
 .repoDetails summary,
@@ -278,22 +188,6 @@ body {
 
 .workspacePanel > .surfaceHeader {
   margin-top: var(--mantine-spacing-md);
-}
-
-.createInline,
-.linkRepositoryControls,
-.debugControls,
-.debugResolve,
-.safeDebugCreate,
-.composer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--mantine-spacing-sm);
-  align-items: end;
-}
-
-.debugControls {
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
 }
 
 .memoryToolbar,
@@ -324,16 +218,12 @@ body {
   white-space: nowrap;
 }
 
-.memoryComposerGrid,
-.promoteMemoryGrid,
 .settingsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--mantine-spacing-md);
 }
 
-.memoryComposerGrid textarea,
-.promoteMemoryGrid textarea,
 .settingsGrid .wideSetting,
 .settingHint {
   grid-column: 1 / -1;
@@ -372,16 +262,6 @@ body {
   min-height: 360px;
 }
 
-.optimizedHero {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.contextColumns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--mantine-spacing-md);
-}
-
 .contextLine,
 .debugInstruction pre,
 .debugOutput,
@@ -412,34 +292,6 @@ body {
   flex-wrap: wrap;
 }
 
-.debugTable {
-  display: grid;
-  overflow-x: auto;
-}
-
-.debugTableHead,
-.debugTableRow {
-  display: grid;
-  grid-template-columns: minmax(110px, 0.8fr) minmax(90px, 0.65fr) minmax(90px, 0.65fr) minmax(130px, 1fr) minmax(150px, 0.9fr);
-  gap: var(--mantine-spacing-sm);
-  min-width: 720px;
-  padding: var(--mantine-spacing-xs) 0;
-  border-bottom: 1px solid var(--mantine-color-default-border);
-}
-
-.debugTableHead {
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
-.chatLayout {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
-}
-
-.composer {
-  align-items: start;
-}
-
 .questionBubble {
   justify-self: end;
   max-width: min(78%, 760px);
@@ -467,8 +319,7 @@ body {
   border-radius: var(--mantine-radius-sm);
 }
 
-.settingsGroup .settingsGrid,
-.settingsGroup .adminGrid {
+.settingsGroup .settingsGrid {
   padding: var(--mantine-spacing-md);
 }
 
@@ -477,8 +328,7 @@ body {
   gap: 6px;
 }
 
-.settingsGrid label span,
-.adminGrid span {
+.settingsGrid label span {
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -506,43 +356,16 @@ body {
   color: var(--mantine-color-text);
 }
 
-@media (max-width: 1100px) {
-  .homeGrid,
-  .knowledgeLayout,
-  .chatLayout,
-  .optimizerLayout,
-  .safeDebugLayout,
-  .debugTwoColumn,
-  .contextColumns {
-    grid-template-columns: 1fr;
-  }
-}
-
 @media (max-width: 720px) {
   .mantineWorkspace {
     gap: var(--mantine-spacing-md);
   }
 
-  .compactState,
-  .stateGrid,
-  .repoStats,
-  .optimizerHints,
-  .optimizedHero,
-  .adminGrid,
-  .memoryComposerGrid,
-  .promoteMemoryGrid,
-  .settingsGrid,
-  .createInline,
-  .linkRepositoryControls,
-  .debugControls,
-  .debugResolve,
-  .safeDebugCreate,
-  .composer {
+  .settingsGrid {
     grid-template-columns: 1fr;
   }
 
   .surfaceHeader,
-  .repoToolbar,
   .debugHeader {
     align-items: stretch;
     flex-direction: column;

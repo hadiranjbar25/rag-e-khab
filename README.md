@@ -78,11 +78,12 @@ Then open:
 - Swagger UI: `http://localhost:8060/swagger-ui.html`
 - MCP endpoint: `http://localhost:8060/mcp`
 - Qdrant: `http://localhost:6333`
+- Postgres: `localhost:5433`
 
 For local app development, start only the Docker backing services:
 
 ```bash
-docker compose up -d qdrant
+docker compose up -d postgres qdrant
 ```
 
 Then run the backend locally:
@@ -103,7 +104,7 @@ npm run dev
 
 - `frontend/src/main.tsx` mounts React and imports global styles.
 - `frontend/src/App.tsx` contains the current app shell and feature views.
-- `frontend/src/styles.css` contains the shared UI styling.
+- `frontend/src/globals.css` contains the small app-wide layout and global styling layer.
 - `backend/src/main/kotlin/com/ragekhab/api` contains REST controllers.
 - `backend/src/main/kotlin/com/ragekhab/mcp` contains the JSON-RPC MCP controller.
 - `backend/src/main/kotlin/com/ragekhab/debug` contains Safe Debug Sessions models, storage, and sanitization workflow.
@@ -132,6 +133,7 @@ OpenAPI docs are generated for REST endpoints under `/api/**`:
 - `GET /api/admin/status`
 - `POST /api/context/optimize`
 - `POST /api/repository-agent/scan`
+- `POST /api/repository-agent/context-package`
 - `GET /api/repository-agent/status`
 - `POST /api/memories`
 - `POST /api/memories/recall`
@@ -547,6 +549,7 @@ Tool guide:
 | --- | --- | --- |
 | `repository_status` | Returns synchronized repositories, tracked files, deleted files, and last sync times. | First, to discover the exact repository name to pass to other tools. |
 | `recall_memory` | Retrieves durable project memories ranked for a task. | Before coding, reviewing, or debugging so prior decisions and conventions shape the work. |
+| `build_context_package` | Builds compact task-focused repository context with class summaries, dependency chains, related tests, optional snippets, and selection reasons. | Prefer this when an agent needs coding context without raw repository dumps. |
 | `optimize_context` | Retrieves and trims the smallest useful context for a task, with token savings. | Before opening many files locally; use it to decide what to inspect. |
 | `search_documents` | Semantic search over indexed documents and repository context. | When a task needs extra knowledge beyond optimized context. |
 | `ask_knowledge_base` | Answers a question with sources from indexed knowledge. | When the agent needs a cited explanation rather than raw context snippets. |
