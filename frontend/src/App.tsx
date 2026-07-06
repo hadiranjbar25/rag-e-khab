@@ -22,6 +22,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Table,
   Text,
   Textarea,
   TextInput,
@@ -358,6 +359,12 @@ const memoryBadgeColor = (type: string) => {
   return 'teal';
 };
 
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+};
+
 const safeDebugInstruction = `You are connected to a Safe Debug Session.
 
 Use only sanitized artifacts from the session.
@@ -482,6 +489,8 @@ export default function App() {
   const [memorySearch, setMemorySearch] = useState('');
   const [memoryPage, setMemoryPage] = useState(1);
   const [memoryPageSize, setMemoryPageSize] = useState(12);
+  const [repositoryFilePage, setRepositoryFilePage] = useState(1);
+  const [repositoryFilePageSize, setRepositoryFilePageSize] = useState(25);
   const [memoryTypeDraft, setMemoryTypeDraft] = useState('CodingConvention');
   const [memoryContentDraft, setMemoryContentDraft] = useState('');
   const [memoryRepositoryDraft, setMemoryRepositoryDraft] = useState('');
@@ -594,6 +603,17 @@ export default function App() {
   const tokenSavings = optimizedContext ? (optimizedContext.tokenSavings?.savedTokens ?? Math.max(0, totalChunks * 650 - optimizedContext.estimatedTokens)) : 0;
   const lastSync = repositoryStatus?.lastIndexedAt ?? repositoryStatus?.repositories.find((repo) => repo.lastIndexedAt)?.lastIndexedAt;
   const linkedRepositoryIds = new Set(projectRepositories.map((repository) => repository.id));
+  const discoveredFiles = useMemo(() => [...(repositoryStatus?.files ?? [])]
+    .sort((a, b) => {
+      if (a.deleted !== b.deleted) return a.deleted ? 1 : -1;
+      return `${a.repository}/${a.filePath}`.localeCompare(`${b.repository}/${b.filePath}`);
+    }), [repositoryStatus?.files]);
+  const repositoryFilePageCount = Math.max(1, Math.ceil(discoveredFiles.length / repositoryFilePageSize));
+  const normalizedRepositoryFilePage = Math.min(repositoryFilePage, repositoryFilePageCount);
+  const repositoryFilePageStart = (normalizedRepositoryFilePage - 1) * repositoryFilePageSize;
+  const pagedRepositoryFiles = discoveredFiles.slice(repositoryFilePageStart, repositoryFilePageStart + repositoryFilePageSize);
+  const repositoryFileRangeStart = discoveredFiles.length === 0 ? 0 : repositoryFilePageStart + 1;
+  const repositoryFileRangeEnd = Math.min(repositoryFilePageStart + repositoryFilePageSize, discoveredFiles.length);
 
   const stats = useMemo(() => [
     { label: 'Repositories', value: projectRepositories.length, detail: 'linked to this project', icon: Network, tone: 'purple' },
@@ -669,6 +689,14 @@ export default function App() {
   useEffect(() => {
     if (memoryPage > memoryPageCount) setMemoryPage(memoryPageCount);
   }, [memoryPage, memoryPageCount]);
+
+  useEffect(() => {
+    setRepositoryFilePage(1);
+  }, [repositoryStatus?.files, repositoryFilePageSize]);
+
+  useEffect(() => {
+    if (repositoryFilePage > repositoryFilePageCount) setRepositoryFilePage(repositoryFilePageCount);
+  }, [repositoryFilePage, repositoryFilePageCount]);
 
   const recentActivity = useMemo(() => {
     const activities = [
@@ -1309,16 +1337,22 @@ export default function App() {
               })}
             </SimpleGrid>
 
-            <div className="homeGrid">
+            <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
               <Paper component="section" className="surface quietSurface" p="md" radius="sm" withBorder>
                   <Group justify="space-between" align="center" mb="md">
                   <h2>System health</h2>
                   <Badge color="green" variant="light" leftSection={<CheckCircle2 size={14} />}>operational</Badge>
                 </Group>
-                <div className="compactState">
-                  <div><span>Last sync</span><strong>{lastSync ? new Date(lastSync).toLocaleString() : 'No sync yet'}</strong></div>
-                  <div><span>Optimizer</span><strong>{settingsDraft?.optimizer.mode ?? 'retrieval'} · {settingsDraft?.optimizer.maxTokens ?? 3000} tokens</strong></div>
-                </div>
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                  <Box>
+                    <Text size="xs" fw={700} tt="uppercase" c="dimmed">Last sync</Text>
+                    <Text fw={700}>{lastSync ? new Date(lastSync).toLocaleString() : 'No sync yet'}</Text>
+                  </Box>
+                  <Box>
+                    <Text size="xs" fw={700} tt="uppercase" c="dimmed">Optimizer</Text>
+                    <Text fw={700}>{settingsDraft?.optimizer.mode ?? 'retrieval'} · {settingsDraft?.optimizer.maxTokens ?? 3000} tokens</Text>
+                  </Box>
+                </SimpleGrid>
               </Paper>
 
               <Paper component="section" className="surface" p="md" radius="sm" withBorder>
@@ -1326,37 +1360,38 @@ export default function App() {
                   <h2>Recent activity</h2>
                   <Clock3 size={18} />
                 </div>
-                <div className="activityList">
+                <Stack gap="md">
                   {recentActivity.map((item) => {
                     const Icon = item.icon;
                     return (
                     <Paper className="activityRow" key={item.id} p="sm" radius="sm" withBorder>
                       <div className={`activityIcon ${item.tone}`}><Icon size={16} /></div>
-                      <div>
-                        <strong>{item.title}</strong>
-                        <span>{item.detail}</span>
-                      </div>
-                      <time>{new Date(item.at).toLocaleDateString()}</time>
+                      <Box>
+                        <Text fw={700}>{item.title}</Text>
+                        <Text size="sm" c="dimmed">{item.detail}</Text>
+                      </Box>
+                      <Text component="time" size="sm" c="dimmed">{new Date(item.at).toLocaleDateString()}</Text>
                     </Paper>
                     );
                   })}
                   {recentActivity.length === 0 && <div className="empty richEmpty"><strong>No activity yet</strong><span>Scan a repository, add a memory, or index knowledge to make this project useful for coding agents.</span></div>}
-                </div>
+                </Stack>
               </Paper>
-            </div>
+            </SimpleGrid>
           </section>
         )}
 
         {view === 'repositories' && (
           <section className="view">
-            <Paper className="repoToolbar" p="md" radius="sm" withBorder>
-              <div>
-                <h2>{repositories.length || repositoryStatus?.repositories.length || 0} repositories</h2>
-                <p>Repositories are registered by local agents. Link them to the active project when they should contribute knowledge and memories here. {repositoryStatus?.trackedFiles ?? 0} indexed files · last sync {lastSync ? new Date(lastSync).toLocaleString() : 'not available'}</p>
-              </div>
+            <Paper p="md" radius="sm" withBorder>
+              <Group justify="space-between" align="flex-start">
+              <Box flex={1} miw={320}>
+                <Title order={2} size="h3">{repositories.length || repositoryStatus?.repositories.length || 0} repositories</Title>
+                <Text c="dimmed">Repositories are registered by local agents. Link them to the active project when they should contribute knowledge and memories here. {repositoryStatus?.trackedFiles ?? 0} indexed files · last sync {lastSync ? new Date(lastSync).toLocaleString() : 'not available'}</Text>
+              </Box>
               <details className="advancedPanel">
                 <summary>Link repository</summary>
-                <Group className="linkRepositoryControls" align="end" gap="sm">
+                <Group align="end" gap="sm" grow>
                   <Select
                     placeholder="Select repository"
                     value={repositoryToLink || null}
@@ -1370,6 +1405,7 @@ export default function App() {
                   <Button variant="light" color="teal" onClick={() => linkRepositoryToProject()} disabled={busy || !repositoryToLink}>Link</Button>
                 </Group>
               </details>
+              </Group>
             </Paper>
 
             <Stack gap="md">
@@ -1387,21 +1423,27 @@ export default function App() {
                 const linkedMemories = memories.filter((memory) => memory.repository === repo.name).length;
                 return (
                 <Paper component="article" className="repoCard" key={repo.id} p="md" radius="sm" withBorder>
-	                  <div className="repoCardHeader">
-	                    <div>
-	                      <strong>{repo.name}</strong>
-	                      <span>Last sync {repo.lastSyncedAt ? new Date(repo.lastSyncedAt).toLocaleString() : 'not available'}</span>
-	                    </div>
-	                    <div className="repoStatusStack">
+	                  <Group justify="space-between" align="flex-start">
+	                    <Stack gap={2}>
+	                      <Text fw={700}>{repo.name}</Text>
+	                      <Text size="sm" c="dimmed">Last sync {repo.lastSyncedAt ? new Date(repo.lastSyncedAt).toLocaleString() : 'not available'}</Text>
+	                    </Stack>
+	                    <Group gap="sm">
 	                      <Badge color={repo.status === 'synced' ? 'green' : 'gray'} variant="light">{repo.status}</Badge>
 	                      <Badge color={linked ? 'violet' : 'gray'} variant="outline">{linked ? 'In this project' : 'Not in project'}</Badge>
-	                    </div>
-	                  </div>
-                  <div className="repoStats">
-                    <div><span>Knowledge</span><strong>{files.length}</strong></div>
-                    <div><span>Memories</span><strong>{linkedMemories}</strong></div>
-                  </div>
-	                  <div className="repoActions">
+	                    </Group>
+                  </Group>
+                  <SimpleGrid cols={2} spacing="sm" maw={360}>
+                    <Stack gap={2}>
+                      <Text size="xs" fw={700} tt="uppercase" c="dimmed">Knowledge</Text>
+                      <Text fw={700}>{files.length}</Text>
+                    </Stack>
+                    <Stack gap={2}>
+                      <Text size="xs" fw={700} tt="uppercase" c="dimmed">Memories</Text>
+                      <Text fw={700}>{linkedMemories}</Text>
+                    </Stack>
+                  </SimpleGrid>
+	                  <Group gap="sm">
 	                    {linked ? (
 	                      <Button variant="subtle" color="gray" onClick={() => unlinkRepositoryFromProject(repo.id)} disabled={busy}>Remove</Button>
 	                    ) : (
@@ -1417,7 +1459,7 @@ export default function App() {
 	                        </Menu.Item>
 	                      </Menu.Dropdown>
 	                    </Menu>
-	                  </div>
+	                  </Group>
                   <details className="repoDetails">
                     <summary>Details</summary>
                     <div>
@@ -1431,6 +1473,81 @@ export default function App() {
               })}
               {repositories.length === 0 && (repositoryStatus?.repositories.length ?? 0) === 0 && <div className="empty richEmpty"><strong>No repositories yet</strong><span>Run the RAG-e Khab agent from a codebase to register a repository, then link it to this project.</span></div>}
             </Stack>
+
+            <Paper p="md" radius="sm" withBorder>
+              <Group justify="space-between" align="flex-start" mb="md">
+                <Box>
+                  <Title order={2} size="h3">Discovered files</Title>
+                  <Text c="dimmed">File metadata stored by the Repository Agent and used to decide what changed between syncs.</Text>
+                </Box>
+                <Group gap="xs">
+                  <Badge color="teal" variant="light">{repositoryStatus?.trackedFiles ?? 0} tracked</Badge>
+                  <Badge color="gray" variant="outline">{repositoryStatus?.deletedFiles ?? 0} deleted</Badge>
+                </Group>
+              </Group>
+              <ScrollArea>
+                <Table miw={960} verticalSpacing="xs">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th>Repository</Table.Th>
+                      <Table.Th>Path</Table.Th>
+                      <Table.Th>Module</Table.Th>
+                      <Table.Th>Language</Table.Th>
+                      <Table.Th>Size</Table.Th>
+                      <Table.Th>Hash</Table.Th>
+                      <Table.Th>Indexed</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {pagedRepositoryFiles.map((file) => (
+                      <Table.Tr key={file.documentId}>
+                        <Table.Td>
+                          <Badge color={file.deleted ? 'gray' : 'green'} variant="light">{file.deleted ? 'deleted' : 'tracked'}</Badge>
+                        </Table.Td>
+                        <Table.Td>{file.repository || 'repository'}</Table.Td>
+                        <Table.Td>
+                          <Text size="sm" maw={360} truncate="end">{file.filePath}</Text>
+                        </Table.Td>
+                        <Table.Td>{file.module}</Table.Td>
+                        <Table.Td>{file.language}</Table.Td>
+                        <Table.Td>{formatBytes(file.sizeBytes)}</Table.Td>
+                        <Table.Td>
+                          <Text size="sm" ff="monospace">{file.contentHash.slice(0, 10)}</Text>
+                        </Table.Td>
+                        <Table.Td>{new Date(file.indexedAt).toLocaleString()}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </ScrollArea>
+              {discoveredFiles.length > 0 && (
+                <Group justify="space-between" gap="sm" mt="md">
+                  <Text size="sm" c="dimmed">
+                    {repositoryFileRangeStart}-{repositoryFileRangeEnd} of {discoveredFiles.length}
+                  </Text>
+                  <Group gap="sm">
+                    <NativeSelect
+                      value={`${repositoryFilePageSize}`}
+                      onChange={(event) => setRepositoryFilePageSize(Number(event.currentTarget.value))}
+                      aria-label="Repository files per page"
+                      data={[
+                        { value: '25', label: '25 / page' },
+                        { value: '50', label: '50 / page' },
+                        { value: '100', label: '100 / page' },
+                      ]}
+                    />
+                    <Pagination
+                      total={repositoryFilePageCount}
+                      value={normalizedRepositoryFilePage}
+                      onChange={setRepositoryFilePage}
+                      size="sm"
+                    />
+                  </Group>
+                </Group>
+              )}
+              {discoveredFiles.length === 0 && <Text c="dimmed" mt="sm">No discovered file metadata yet.</Text>}
+            </Paper>
 
 	            <details className="advancedPanel">
 	              <summary>Repository deletion options</summary>
@@ -1446,7 +1563,7 @@ export default function App() {
               <summary>Projects</summary>
 	              <div className="surfaceHeader">
 	                <h2>Projects</h2>
-	                <Group className="createInline" gap="sm">
+	                <Group gap="sm" grow>
 	                  <TextInput value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="New project" />
 	                  <Button onClick={createProject} disabled={busy || !projectName.trim()} title="Create project" leftSection={<FolderPlus size={18} />}>Create</Button>
 	                </Group>
@@ -1459,7 +1576,7 @@ export default function App() {
                     <strong>{project.documentCount}</strong>
                     <small>created {new Date(project.createdAt).toLocaleDateString()}</small>
 	                  </div>
-	                  <div className="projectActions">
+                  <Group gap="sm">
 	                    <Button variant="subtle" color="gray" onClick={() => setSelectedProjectId(project.id)} disabled={busy}>
 	                      Select
 	                    </Button>
@@ -1468,7 +1585,7 @@ export default function App() {
 	                        <Trash2 size={18} />
 	                      </ActionIcon>
 	                    )}
-	                  </div>
+	                  </Group>
                   </Paper>
                 ))}
               </SimpleGrid>
@@ -1532,21 +1649,21 @@ export default function App() {
                   <h2>Remember for this project</h2>
                   <p>Store rules like coding conventions, architecture decisions, and project-specific preferences.</p>
                 </div>
-                <div className="memoryComposerGrid">
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                   <Select
                     value={memoryTypeDraft}
                     onChange={(value) => setMemoryTypeDraft(value ?? 'CodingConvention')}
                     data={memoryTypes.map((type) => ({ value: type, label: memoryLabels[type] ?? type }))}
                   />
                   <TextInput value={memoryRepositoryDraft} onChange={(event) => setMemoryRepositoryDraft(event.currentTarget.value)} placeholder="repository optional" />
-                  <Textarea value={memoryContentDraft} onChange={(event) => setMemoryContentDraft(event.currentTarget.value)} placeholder="Do not use uppercase UI labels in this project. Prefer sentence case." autosize minRows={3} />
+                  <Textarea style={{ gridColumn: '1 / -1' }} value={memoryContentDraft} onChange={(event) => setMemoryContentDraft(event.currentTarget.value)} placeholder="Do not use uppercase UI labels in this project. Prefer sentence case." autosize minRows={3} />
                   <Button onClick={rememberMemory} disabled={busy || !memoryContentDraft.trim()}>Remember</Button>
-                </div>
+                </SimpleGrid>
               </div>
             </Paper>
 
             <Paper className="memoryLinkPanel" p="lg" radius="sm" withBorder>
-              <div className="linkRepositoryControls">
+              <Group align="end" gap="sm" grow>
                 <Select
                   value={memoryToLink}
                   onChange={(value) => setMemoryToLink(value ?? '')}
@@ -1560,7 +1677,7 @@ export default function App() {
                     }))}
                 />
                 <Button variant="light" color="teal" onClick={linkMemoryToProject} disabled={busy || !memoryToLink}>Link</Button>
-              </div>
+              </Group>
             </Paper>
 
             <SimpleGrid cols={{ base: 1, sm: 2, lg: 3, xl: 4 }} spacing="md">
@@ -1591,7 +1708,7 @@ export default function App() {
         )}
 
 	        {view === 'knowledge' && (
-	          <section className="view knowledgeLayout">
+	          <SimpleGrid component="section" className="view" cols={{ base: 1, md: 2 }} spacing="lg">
 	            <Paper component="section" className="surface ingestSurface" p="md" radius="sm" withBorder>
 	              <SegmentedControl
 	                fullWidth
@@ -1631,7 +1748,7 @@ export default function App() {
 	                <h2>Indexed items</h2>
 	                <Button variant="light" color="gray" onClick={reindex} disabled={busy} leftSection={<RefreshCw size={16} />}>Reindex</Button>
 	              </div>
-              <div className="documentList">
+              <Stack gap="md">
                 {documents.map((doc) => (
                   <Paper className="documentRow" key={doc.id} p="sm" radius="sm" withBorder>
                     <FileText size={20} />
@@ -1643,18 +1760,18 @@ export default function App() {
                   </Paper>
                 ))}
                 {documents.length === 0 && <div className="empty richEmpty"><strong>No sources indexed yet</strong><span>Add text, upload a file, or sync a repository so coding agents can retrieve useful context.</span></div>}
-              </div>
+              </Stack>
             </Paper>
-          </section>
+          </SimpleGrid>
         )}
 
         {view === 'safeDebug' && (
-	          <section className="view safeDebugLayout">
-	            <section className="safeDebugColumn">
-	              <div className="safeDebugCreate">
+	          <SimpleGrid component="section" className="view" cols={{ base: 1, lg: 2 }} spacing="lg">
+	            <Stack component="section" gap="md">
+	              <Group align="end" gap="sm" grow>
 	                <TextInput value={debugTitle} onChange={(event) => setDebugTitle(event.target.value)} placeholder="BUG-123 or checkout failure" />
 	                <Button onClick={createDebugSession} disabled={busy || !debugTitle.trim()} title="Create session" leftSection={<Plus size={18} />}>Create</Button>
-	              </div>
+	              </Group>
 
               <section className="debugList">
                 <div className="surfaceHeader">
@@ -1670,10 +1787,10 @@ export default function App() {
                       <small>Updated {new Date(session.updatedAt).toLocaleString()}</small>
                     </div>
 	                    <Badge color={session.status === 'active' ? 'green' : 'gray'} variant="light">{session.status}</Badge>
-	                    <div className="debugRowActions">
+	                    <Group gap="sm">
 	                      <Button variant="subtle" color="gray" onClick={() => openDebugSession(session.id)} disabled={busy}>Open</Button>
 	                      <ActionIcon variant="light" color="gray" onClick={() => archiveDebugSession(session.id)} disabled={busy} title="Archive session"><Archive size={17} /></ActionIcon>
-	                    </div>
+	                    </Group>
                   </Paper>
                 ))}
                 {debugSessions.length === 0 && <div className="empty richEmpty"><strong>No debug sessions</strong><span>Create a session before pasting query output. Raw pasted data stays local to the sanitize request and is not stored.</span></div>}
@@ -1686,9 +1803,9 @@ export default function App() {
 	                </div>
                 <pre>{safeDebugInstruction}</pre>
               </Paper>
-            </section>
+            </Stack>
 
-            <section className="safeDebugDetail">
+            <Stack component="section" gap="md">
               {debugDetail ? (
                 <>
                   <Paper component="section" className="debugHeader" p="md" radius="sm" withBorder>
@@ -1725,11 +1842,11 @@ export default function App() {
                             {item.requestedFields.length > 0 && <small>Fields: {item.requestedFields.join(', ')}</small>}
 	                            {mapping && <small>{item.parentToken} -&gt; {mapping.table}.{mapping.column} = {mapping.realValue}</small>}
 	                            {suggestedSql && <pre>{suggestedSql}</pre>}
-	                            <div className="debugRequestActions">
+	                            <Group gap="sm">
 	                              <Button variant="subtle" color="gray" onClick={() => copyDebugText(suggestedSql)} disabled={!suggestedSql} leftSection={<Copy size={16} />}>Copy SQL</Button>
 	                              <Button variant="light" color="teal" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</Button>
 	                              <Button variant="light" color="red" onClick={() => updateDebugDataRequest(item.id, 'reject')} disabled={busy || item.status !== 'pending'}>Reject</Button>
-	                            </div>
+	                            </Group>
                           </Paper>
                         );
                       })}
@@ -1737,14 +1854,14 @@ export default function App() {
                     </SimpleGrid>
                   </Paper>
 
-                  <section className="debugTwoColumn">
+                  <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
                     <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
                         <h2>Paste data</h2>
                         <ShieldCheck size={18} />
                       </div>
 	                      <Textarea value={debugRawText} onChange={(event) => setDebugRawText(event.target.value)} placeholder="Paste CSV, JSON, or log output here..." minRows={8} autosize />
-	                      <div className="debugControls">
+	                      <Group align="end" gap="sm" grow>
 	                        <NativeSelect value={debugInputType} onChange={(event) => setDebugInputType(event.target.value as DebugInputType)} data={[
 	                          { value: 'csv', label: 'CSV' },
 	                          { value: 'json', label: 'JSON' },
@@ -1757,7 +1874,7 @@ export default function App() {
 	                        ]} />
 	                        <TextInput value={debugSourceName} onChange={(event) => setDebugSourceName(event.target.value)} placeholder="users, orders, payments, custom" />
 	                        <Button onClick={sanitizeDebugData} disabled={busy || !debugRawText.trim()} leftSection={<ShieldCheck size={18} />}>Sanitize</Button>
-	                      </div>
+	                      </Group>
 	                      <NativeSelect
 	                        className="debugRequestSelect"
 	                        value={debugDataRequestId}
@@ -1775,25 +1892,25 @@ export default function App() {
                     <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
 	                        <h2>Sanitized output</h2>
-	                        <div className="debugInlineActions">
+	                        <Group gap="sm">
 	                          <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText} title="Copy sanitized output"><Clipboard size={17} /></ActionIcon>
 	                          <Button variant="subtle" color="gray" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText}>Save artifact</Button>
-	                        </div>
+	                        </Group>
                       </div>
                       <pre className="debugOutput">{debugSanitizedText || 'Sanitized data will appear here.'}</pre>
                     </Paper>
-                  </section>
+                  </SimpleGrid>
 
-                  <section className="debugTwoColumn">
+                  <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
                     <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
                         <h2>Resolve token</h2>
                         <KeyRound size={18} />
 	                      </div>
-	                      <div className="debugResolve">
+	                      <Group align="end" gap="sm" grow>
 	                        <TextInput value={debugTokenQuery} onChange={(event) => setDebugTokenQuery(event.target.value)} placeholder="USER_001" />
 	                        <Button onClick={resolveDebugToken} disabled={busy || !debugTokenQuery.trim()}>Resolve</Button>
-	                      </div>
+	                      </Group>
                       {debugResolvedToken ? (
                         <div className="resolvedToken">
 	                          <span>{debugResolvedToken.token}</span>
@@ -1810,17 +1927,17 @@ export default function App() {
                         <h2>Claude requests</h2>
                         <span>{debugDetail.notes.length}</span>
 	                      </div>
-	                      <div className="debugResolve">
+	                      <Group align="end" gap="sm" grow>
 	                        <TextInput value={claudeRequestDraft} onChange={(event) => setClaudeRequestDraft(event.target.value)} placeholder="Need orders for USER_001" />
 	                        <Button onClick={recordClaudeRequest} disabled={busy || !claudeRequestDraft.trim()}>Record</Button>
-	                      </div>
-                      <div className="debugMiniList">
+	                      </Group>
+                      <Stack gap="md">
                         {debugDetail.notes.slice(0, 4).map((note) => (
                           <div key={note.id}><strong>{note.request}</strong><span>{new Date(note.createdAt).toLocaleString()}</span></div>
                         ))}
-                      </div>
+                      </Stack>
                     </Paper>
-                  </section>
+                  </SimpleGrid>
 
                   <Paper component="section" className="debugPanel promoteMemoryPanel" p="md" radius="sm" withBorder>
                     <div className="surfaceHeader">
@@ -1830,14 +1947,14 @@ export default function App() {
                       </div>
                       <Brain size={18} />
 	                    </div>
-	                    <div className="promoteMemoryGrid">
+	                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
 	                      <NativeSelect value={debugMemoryTypeDraft} onChange={(event) => setDebugMemoryTypeDraft(event.target.value)} data={memoryTypes.map((type) => ({ value: type, label: memoryLabels[type] ?? type }))} />
 	                      <TextInput value={debugMemoryRepositoryDraft} onChange={(event) => setDebugMemoryRepositoryDraft(event.target.value)} placeholder="repository optional" />
 	                      <TextInput value={debugMemoryModuleDraft} onChange={(event) => setDebugMemoryModuleDraft(event.target.value)} placeholder="module optional" />
 	                      <NumberInput min={0} max={1} step={0.05} value={debugMemoryConfidenceDraft} onChange={(value) => setDebugMemoryConfidenceDraft(Number(value) || 0)} />
-	                      <Textarea value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." minRows={4} autosize />
+	                      <Textarea style={{ gridColumn: '1 / -1' }} value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." minRows={4} autosize />
 	                      <Button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim()} leftSection={<Brain size={18} />}>Promote</Button>
-	                    </div>
+	                    </SimpleGrid>
                   </Paper>
 
                   <Paper component="section" className="debugPanel" p="md" radius="sm" withBorder>
@@ -1848,34 +1965,40 @@ export default function App() {
 	                        <TextInput value={debugTokenSearch} onChange={(event) => setDebugTokenSearch(event.target.value)} placeholder="Search tokens..." variant="unstyled" />
 	                      </div>
                     </div>
-                    <div className="debugTable">
-                      <div className="debugTableHead">
-                        <span>Token</span>
-                        <span>Table</span>
-                        <span>Column</span>
-                        <span>Real value</span>
-                        <span>Created</span>
-                      </div>
-                      {filteredDebugMappings.map((mapping) => (
-                        <div className="debugTableRow" key={mapping.token}>
-                          <strong>{mapping.token}</strong>
-                          <span>{mapping.table}</span>
-                          <span>{mapping.column}</span>
-                          <span>{mapping.realValue}</span>
-                          <span>{new Date(mapping.createdAt).toLocaleString()}</span>
-                        </div>
-                      ))}
-                      {filteredDebugMappings.length === 0 && <div className="empty">No token mappings yet.</div>}
-                    </div>
+                    <ScrollArea>
+                      <Table miw={720} verticalSpacing="xs">
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Token</Table.Th>
+                            <Table.Th>Table</Table.Th>
+                            <Table.Th>Column</Table.Th>
+                            <Table.Th>Real value</Table.Th>
+                            <Table.Th>Created</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {filteredDebugMappings.map((mapping) => (
+                            <Table.Tr key={mapping.token}>
+                              <Table.Td><strong>{mapping.token}</strong></Table.Td>
+                              <Table.Td>{mapping.table}</Table.Td>
+                              <Table.Td>{mapping.column}</Table.Td>
+                              <Table.Td>{mapping.realValue}</Table.Td>
+                              <Table.Td>{new Date(mapping.createdAt).toLocaleString()}</Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                    </ScrollArea>
+                    {filteredDebugMappings.length === 0 && <div className="empty">No token mappings yet.</div>}
                   </Paper>
 
-                  <section className="debugTwoColumn">
+                  <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
                     <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
                         <h2>Shared artifacts</h2>
                         <span>{debugDetail.artifacts.length}</span>
                       </div>
-                      <div className="debugArtifactList">
+                      <Stack gap="md">
                         {debugDetail.artifacts.map((artifact) => (
                           <article key={artifact.id}>
                             <div>
@@ -1887,7 +2010,7 @@ export default function App() {
 	                          </article>
                         ))}
                         {debugDetail.artifacts.length === 0 && <div className="empty">No sanitized artifacts saved yet.</div>}
-                      </div>
+                      </Stack>
                     </Paper>
 
                     <Paper className="debugPanel" p="md" radius="sm" withBorder>
@@ -1895,7 +2018,7 @@ export default function App() {
                         <h2>Warnings</h2>
                         <AlertCircle size={18} />
                       </div>
-                      <div className="debugWarningList">
+                      <Stack gap="md">
                         {(debugWarnings.length ? debugWarnings : debugDetail.artifacts[0]?.warningSummary ?? []).map((warning, index) => (
                           <div key={`${warning.type}-${warning.field}-${index}`}>
                             <strong>{warning.type.replace('_', ' ')}</strong>
@@ -1903,19 +2026,19 @@ export default function App() {
                           </div>
                         ))}
                         {debugWarnings.length === 0 && (debugDetail.artifacts[0]?.warningSummary.length ?? 0) === 0 && <div className="empty">No warnings for the latest artifact.</div>}
-                      </div>
+                      </Stack>
                     </Paper>
-                  </section>
+                  </SimpleGrid>
                 </>
               ) : (
                 <div className="empty richEmpty"><strong>Select or create a debug session</strong><span>Sessions keep deterministic fake-to-real mappings so follow-up CSV, JSON, and logs reuse the same tokens.</span></div>
               )}
-            </section>
-          </section>
+            </Stack>
+          </SimpleGrid>
         )}
 
         {view === 'optimizer' && (
-          <section className="optimizerLayout">
+          <SimpleGrid component="section" cols={{ base: 1, md: 2 }} spacing="lg">
             <Paper component="section" className="surface optimizerComposer flagshipCard" p="md" radius="sm" withBorder>
               <div className="surfaceHeader">
                 <div>
@@ -1926,48 +2049,54 @@ export default function App() {
 	              </div>
 	              <Textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Add pagination to Orders API" minRows={7} autosize />
 	              <Button onClick={optimizeContext} disabled={busy || !task.trim()} leftSection={<Sparkles size={18} />}>Optimize context</Button>
-              <div className="optimizerHints">
-                <div><span>Mode</span><strong>{settingsDraft?.optimizer.mode ?? 'retrieval'}</strong></div>
-                <div><span>Budget</span><strong>{settingsDraft?.optimizer.maxTokens ?? 3000} tokens</strong></div>
-              </div>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                <Box>
+                  <Text size="xs" fw={700} tt="uppercase" c="dimmed">Mode</Text>
+                  <Text fw={700}>{settingsDraft?.optimizer.mode ?? 'retrieval'}</Text>
+                </Box>
+                <Box>
+                  <Text size="xs" fw={700} tt="uppercase" c="dimmed">Budget</Text>
+                  <Text fw={700}>{settingsDraft?.optimizer.maxTokens ?? 3000} tokens</Text>
+                </Box>
+              </SimpleGrid>
             </Paper>
 
             <Paper component="section" className="surface optimizedResult flagshipResult" p="md" radius="sm" withBorder>
               {optimizedContext ? (
                 <>
-                  <div className="optimizedHero">
-                    <div>
-                      <span>Token estimate</span>
-                      <strong>{optimizedContext.estimatedTokens.toLocaleString()} tokens</strong>
-                    </div>
-                    <div>
-                      <span>Token savings</span>
-                      <strong>{optimizedContext.tokenSavings ? `${optimizedContext.tokenSavings.savingsPercent.toFixed(0)}%` : 'optimized'}</strong>
-                    </div>
-                    <div>
-                      <span>Sources</span>
-                      <strong>{optimizedContext.sources.length}</strong>
-                    </div>
-                  </div>
+                  <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                    <Box>
+                      <Text size="xs" fw={700} tt="uppercase" c="dimmed">Token estimate</Text>
+                      <Text fw={700}>{optimizedContext.estimatedTokens.toLocaleString()} tokens</Text>
+                    </Box>
+                    <Box>
+                      <Text size="xs" fw={700} tt="uppercase" c="dimmed">Token savings</Text>
+                      <Text fw={700}>{optimizedContext.tokenSavings ? `${optimizedContext.tokenSavings.savingsPercent.toFixed(0)}%` : 'optimized'}</Text>
+                    </Box>
+                    <Box>
+                      <Text size="xs" fw={700} tt="uppercase" c="dimmed">Sources</Text>
+                      <Text fw={700}>{optimizedContext.sources.length}</Text>
+                    </Box>
+                  </SimpleGrid>
                   <div className="optimizedSummary">
                     <span>Summary</span>
                     <p>{optimizedContext.summary}</p>
                   </div>
-                  <div className="contextColumns">
+                  <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                     <div>
                       <h2>Critical</h2>
                       {optimizedContext.criticalContext.map((item) => <p className="contextLine" key={item}>{item}</p>)}
                     </div>
-                  </div>
+                  </SimpleGrid>
                   <Group gap="xs">
                     {optimizedContext.sources.map((source) => <Badge key={source} color="gray" variant="light">{source}</Badge>)}
                   </Group>
                   {optimizedContext.importantContext.length > 0 && (
                     <details className="advancedPanel optionalContext">
                       <summary>Show supporting context</summary>
-                      <div className="contextStack">
+                      <Stack gap="md">
                         {optimizedContext.importantContext.map((item) => <p className="contextLine" key={item}>{item}</p>)}
-                      </div>
+                      </Stack>
                     </details>
                   )}
                 </>
@@ -1975,17 +2104,17 @@ export default function App() {
                 <div className="empty richEmpty"><strong>Ready to optimize</strong><span>Enter a coding task and RAG-e Khab will retrieve, rank, deduplicate, compress when configured, and return context within the token budget.</span></div>
               )}
             </Paper>
-          </section>
+          </SimpleGrid>
         )}
 
         {view === 'chat' && (
-	          <section className="chatLayout">
+	          <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
 	            <Paper component="section" className="surface chatSurface" p="md" radius="sm" withBorder>
-	              <div className="composer">
-	                <Textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask your knowledge base..." minRows={4} autosize />
+	              <Group align="flex-start" gap="sm" wrap="nowrap">
+	                <Textarea style={{ flex: 1 }} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask your knowledge base..." minRows={4} autosize />
 	                <ActionIcon size="xl" onClick={() => ask()} disabled={busy || !question.trim()} title="Send question"><Send size={18} /></ActionIcon>
-	              </div>
-              <div className="answers">
+	              </Group>
+              <Stack gap="md">
                 {history.map((turn) => (
                   <Paper component="article" className="turn" key={turn.id} p="md" radius="sm" withBorder>
                     <div className="questionBubble">{turn.question}</div>
@@ -2004,7 +2133,7 @@ export default function App() {
                   </Paper>
                 ))}
                 {history.length === 0 && <div className="empty richEmpty"><strong>No conversation yet</strong><span>Ask a question to inspect cited answers from memories, documents, and repository knowledge.</span></div>}
-              </div>
+              </Stack>
             </Paper>
 
             <Paper component="aside" className="sourcePanel" p="md" radius="sm" withBorder>
@@ -2023,7 +2152,7 @@ export default function App() {
                 <div className="empty richEmpty"><strong>No source selected</strong><span>Select a citation from an answer to inspect the exact retrieved context.</span></div>
               )}
             </Paper>
-          </section>
+          </SimpleGrid>
         )}
 
         {view === 'settings' && (
@@ -2316,12 +2445,24 @@ export default function App() {
                   </Paper>
                   <Paper component="details" className="settingsGroup" p="md" radius="sm" withBorder>
                     <summary>Storage diagnostics</summary>
-                    <div className="adminGrid storageGrid">
-                      <div><span>Vector store</span><strong>{status?.index.vectorStore ?? 'unknown'}</strong></div>
-                      <div><span>Collection</span><strong>{status?.index.collection ?? 'unknown'}</strong></div>
-                      <div><span>Qdrant</span><strong>{status?.qdrantUrl ?? 'unknown'}</strong></div>
-                      <div><span>Documents</span><strong>{status?.index.documentCount ?? 0}</strong></div>
-                    </div>
+                    <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                      <Box>
+                        <Text size="xs" fw={700} tt="uppercase" c="dimmed">Vector store</Text>
+                        <Text fw={700}>{status?.index.vectorStore ?? 'unknown'}</Text>
+                      </Box>
+                      <Box>
+                        <Text size="xs" fw={700} tt="uppercase" c="dimmed">Collection</Text>
+                        <Text fw={700}>{status?.index.collection ?? 'unknown'}</Text>
+                      </Box>
+                      <Box>
+                        <Text size="xs" fw={700} tt="uppercase" c="dimmed">Qdrant</Text>
+                        <Text fw={700}>{status?.qdrantUrl ?? 'unknown'}</Text>
+                      </Box>
+                      <Box>
+                        <Text size="xs" fw={700} tt="uppercase" c="dimmed">Documents</Text>
+                        <Text fw={700}>{status?.index.documentCount ?? 0}</Text>
+                      </Box>
+                    </SimpleGrid>
                   </Paper>
                 </div>
               </Paper>

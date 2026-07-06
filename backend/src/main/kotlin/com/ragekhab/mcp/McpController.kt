@@ -12,7 +12,10 @@ import com.ragekhab.memory.RecallMemoryRequest
 import com.ragekhab.memory.RememberRequest
 import com.ragekhab.project.CreateProjectRequest
 import com.ragekhab.project.ProjectService
+import com.ragekhab.repository.ContextLevel
+import com.ragekhab.repository.ContextRequest
 import com.ragekhab.repository.RepositoryAgentService
+import com.ragekhab.repository.RepositoryContextPackageService
 import com.ragekhab.repository.RepositoryScanRequest
 import com.ragekhab.search.SemanticSearchService
 import org.springframework.web.bind.annotation.PostMapping
@@ -33,6 +36,7 @@ class McpController(
     private val optimizerService: ContextOptimizerService,
     private val memoryService: MemoryService,
     private val repositoryAgent: RepositoryAgentService,
+    private val contextPackages: RepositoryContextPackageService,
     private val documentService: DocumentService,
     private val projectService: ProjectService,
     private val debugSessions: DebugSessionService,
@@ -93,6 +97,22 @@ class McpController(
                 ),
             )
             "repository_status" -> repositoryAgent.status(arguments["repository"]?.toString()?.takeIf { it.isNotBlank() })
+            "build_context_package" -> contextPackages.buildContextPackage(
+                ContextRequest(
+                    repoId = arguments["repoId"]?.toString()?.takeIf { it.isNotBlank() },
+                    repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
+                    task = arguments["task"]?.toString() ?: error("Missing task"),
+                    maxTokens = arguments["maxTokens"]?.toString()?.toIntOrNull() ?: 6_000,
+                    includeTests = arguments["includeTests"]?.toString()?.toBooleanStrictOrNull() ?: true,
+                    includeRawSource = arguments["includeRawSource"]?.toString()?.toBooleanStrictOrNull() ?: false,
+                    levels = stringListArgument(arguments["levels"]).mapNotNull(::parseContextLevel),
+                    filePath = arguments["filePath"]?.toString()?.takeIf { it.isNotBlank() },
+                    className = arguments["class"]?.toString()?.takeIf { it.isNotBlank() },
+                    method = arguments["method"]?.toString()?.takeIf { it.isNotBlank() },
+                    startLine = arguments["startLine"]?.toString()?.toIntOrNull(),
+                    endLine = arguments["endLine"]?.toString()?.toIntOrNull(),
+                ),
+            )
             "list_debug_sessions" -> mapOf("sessions" to debugSessions.list(includeArchived = false))
             "get_debug_session_context" -> debugSessions.contextForMcp(UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")))
             "resolve_debug_token" -> debugSessions.resolveTokenForMcp(
@@ -148,6 +168,7 @@ class McpController(
         tool("learn_from_session", "Future tool: extract durable memories from completed coding work.", mapOf("session" to "string")),
         tool("scan_repository", "Scan and synchronize a named repository into the knowledge base.", mapOf("repository" to "string", "name" to "string", "path" to "string", "full" to "boolean", "projectId" to "string")),
         tool("repository_status", "Return repository-agent synchronization metadata.", mapOf("repository" to "string")),
+        tool("build_context_package", "Build a compact, task-focused repository context package within a token budget. Defaults to summaries and returns raw source only when requested.", mapOf("repoId" to "string", "repository" to "string", "task" to "string", "maxTokens" to "number", "includeTests" to "boolean", "includeRawSource" to "boolean", "levels" to "array", "filePath" to "string", "class" to "string", "method" to "string", "startLine" to "number", "endLine" to "number")),
         tool("list_debug_sessions", "List active Safe Debug Sessions. Returns session metadata only.", emptyMap()),
         tool("get_debug_session_context", "Return sanitized Safe Debug Session artifacts and token names only. Raw pasted data and real values are never returned.", mapOf("sessionId" to "string")),
         tool("resolve_debug_token", "Sensitive local-only tool: resolve one Safe Debug token to its real database identifier so the developer can manually query more data.", mapOf("sessionId" to "string", "token" to "string")),
@@ -166,6 +187,11 @@ class McpController(
         val normalized = value.filter { it.isLetterOrDigit() }.lowercase()
         return MemoryType.entries.firstOrNull { it.name.filter { char -> char.isLetterOrDigit() }.lowercase() == normalized }
             ?: error("Unsupported memory type '$value'. Available: ${MemoryType.entries.joinToString { it.name }}")
+    }
+
+    private fun parseContextLevel(value: String): ContextLevel? {
+        val normalized = value.trim().lowercase()
+        return ContextLevel.entries.firstOrNull { it.name == normalized }
     }
 
     private fun stringListArgument(value: Any?): List<String> =
