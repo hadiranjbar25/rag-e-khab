@@ -18,13 +18,17 @@ import com.ragekhab.repository.RepositoryAgentService
 import com.ragekhab.repository.RepositoryContextPackageService
 import com.ragekhab.repository.RepositoryScanRequest
 import com.ragekhab.search.SemanticSearchService
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
-data class JsonRpcRequest(val jsonrpc: String = "2.0", val id: Any? = null, val method: String, val params: Map<String, Any?> = emptyMap())
+data class JsonRpcRequest(val jsonrpc: String = "2.0", val id: Any? = null, val method: String, val params: Map<String, Any?>? = null)
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class JsonRpcResponse(val jsonrpc: String = "2.0", val id: Any? = null, val result: Any? = null, val error: JsonRpcError? = null)
 data class JsonRpcError(val code: Int, val message: String)
 
@@ -40,14 +44,22 @@ class McpController(
     private val documentService: DocumentService,
     private val projectService: ProjectService,
     private val debugSessions: DebugSessionService,
+    private val objectMapper: ObjectMapper,
 ) {
     @PostMapping
     fun handle(@RequestBody request: JsonRpcRequest): JsonRpcResponse =
         runCatching {
             when (request.method) {
-                "initialize" -> mapOf("protocolVersion" to "2025-06-18", "serverInfo" to mapOf("name" to "RAG-e Khab", "version" to "0.1.0"))
+                "initialize" -> mapOf(
+                    "protocolVersion" to "2025-06-18",
+                    "serverInfo" to mapOf("name" to "RAG-e Khab", "version" to "0.1.0"),
+                    "capabilities" to mapOf("tools" to emptyMap<String, Any>()),
+                )
                 "tools/list" -> mapOf("tools" to tools())
-                "tools/call" -> callTool(request.params)
+                "tools/call" -> mapOf(
+                    "content" to listOf(mapOf("type" to "text", "text" to objectMapper.writeValueAsString(callTool(request.params ?: emptyMap())))),
+                    "isError" to false,
+                )
                 else -> error("Unsupported MCP method '${request.method}'")
             }
         }.fold(
