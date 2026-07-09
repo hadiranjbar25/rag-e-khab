@@ -17,7 +17,8 @@ body {
 
 .mantineWorkspace {
   width: 100%;
-  max-width: 1480px;
+  max-width: none;
+  min-width: 0;
   display: grid;
   gap: var(--mantine-spacing-lg);
   align-content: start;
@@ -53,6 +54,15 @@ body {
 .settingsSections {
   display: grid;
   gap: var(--mantine-spacing-md);
+}
+
+.safeDebugLayout {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.safeDebugControls {
+  width: 100%;
 }
 
 .surfaceHeader {

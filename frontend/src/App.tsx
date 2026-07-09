@@ -23,6 +23,7 @@ import {
   SimpleGrid,
   Stack,
   Table,
+  Tabs,
   Text,
   Textarea,
   TextInput,
@@ -365,13 +366,16 @@ const formatBytes = (bytes: number) => {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 };
 
-const safeDebugInstruction = `You are connected to a Safe Debug Session.
+const safeDebugInstructionFor = (sessionId?: string) => `You are connected to a Safe Debug Session.
+
+Current sessionId: ${sessionId || '<select a debug session>'}
 
 Use only sanitized artifacts from the session.
 Do not ask the developer for raw production data.
 Do not ask for names, emails, phone numbers, addresses, or other PII.
 
 When you need more data, call create_debug_data_request with:
+- sessionId
 - entity
 - relation
 - parentToken
@@ -482,7 +486,7 @@ export default function App() {
   const [debugTokenQuery, setDebugTokenQuery] = useState('');
   const [debugResolvedToken, setDebugResolvedToken] = useState<DebugTokenMapping | null>(null);
   const [debugTokenSearch, setDebugTokenSearch] = useState('');
-  const [claudeRequestDraft, setClaudeRequestDraft] = useState('');
+  const [agentRequestDraft, setAgentRequestDraft] = useState('');
   const [repositoryToLink, setRepositoryToLink] = useState('');
   const [deleteRepositoryKnowledge, setDeleteRepositoryKnowledge] = useState(false);
   const [memoryFilter, setMemoryFilter] = useState<string>('all');
@@ -614,6 +618,9 @@ export default function App() {
   const pagedRepositoryFiles = discoveredFiles.slice(repositoryFilePageStart, repositoryFilePageStart + repositoryFilePageSize);
   const repositoryFileRangeStart = discoveredFiles.length === 0 ? 0 : repositoryFilePageStart + 1;
   const repositoryFileRangeEnd = Math.min(repositoryFilePageStart + repositoryFilePageSize, discoveredFiles.length);
+  const sortedDebugSessions = useMemo(() => [...debugSessions]
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [debugSessions]);
+  const activeDebugSession = sortedDebugSessions.find((session) => session.id === activeDebugSessionId);
 
   const stats = useMemo(() => [
     { label: 'Repositories', value: projectRepositories.length, detail: 'linked to this project', icon: Network, tone: 'purple' },
@@ -643,8 +650,8 @@ export default function App() {
     repositories: 'Codebases linked to the active project.',
     memories: 'Decisions, conventions, fixes, and patterns for this project.',
     knowledge: 'Documents and notes available to coding agents.',
-    safeDebug: 'Sanitize production-like query output before sharing it with Claude.',
-    optimizer: 'Create the smallest useful context for Claude Code.',
+    safeDebug: 'Sanitize production-like query output before sharing it with coding agents.',
+    optimizer: 'Create the smallest useful context for coding agents.',
     settings: 'Configure models, optimization, repository sync, and advanced infrastructure.',
     chat: 'Ask cited questions against the active project.'
   };
@@ -1132,19 +1139,19 @@ export default function App() {
     }
   };
 
-  const recordClaudeRequest = async () => {
-    if (!activeDebugSessionId || !claudeRequestDraft.trim()) return;
+  const recordAgentRequest = async () => {
+    if (!activeDebugSessionId || !agentRequestDraft.trim()) return;
     setBusy(true);
     setError(null);
     try {
       await request<DebugNote>(`/api/debug-sessions/${activeDebugSessionId}/claude-requests`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ request: claudeRequestDraft })
+        body: JSON.stringify({ request: agentRequestDraft })
       });
-      setClaudeRequestDraft('');
+      setAgentRequestDraft('');
       setDebugDetail(await request<DebugSessionDetail>(`/api/debug-sessions/${activeDebugSessionId}`));
-      showToast({ type: 'success', title: 'Claude request recorded' });
+      showToast({ type: 'success', title: 'Agent request recorded' });
     } catch (err) {
       reportError(err, 'Request note failed');
     } finally {
@@ -1237,6 +1244,8 @@ export default function App() {
     const column = mapping.column.toLowerCase() === 'id' ? `${table.replace(/s$/, '')}_id` : mapping.column;
     return `SELECT *\nFROM ${relation}\nWHERE ${column} = ${sqlLiteral(mapping.realValue)};`;
   };
+
+  const activeSafeDebugInstruction = safeDebugInstructionFor(debugDetail?.session.id ?? activeDebugSessionId);
 
   return (
     <AppShell
@@ -1478,7 +1487,7 @@ export default function App() {
               <Group justify="space-between" align="flex-start" mb="md">
                 <Box>
                   <Title order={2} size="h3">Discovered files</Title>
-                  <Text c="dimmed">File metadata stored by the Repository Agent and used to decide what changed between syncs.</Text>
+                  <Text c="dimmed">File metadata used to decide what changed between repository syncs.</Text>
                 </Box>
                 <Group gap="xs">
                   <Badge color="teal" variant="light">{repositoryStatus?.trackedFiles ?? 0} tracked</Badge>
@@ -1570,13 +1579,15 @@ export default function App() {
 	              </div>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
                 {projects.map((project) => (
-                  <Paper component="article" className={project.id === selectedProjectId ? 'projectCard active' : 'projectCard'} key={project.id} p="md" radius="sm" withBorder>
-                  <div>
-                    <span>{project.name}</span>
-                    <strong>{project.documentCount}</strong>
-                    <small>created {new Date(project.createdAt).toLocaleDateString()}</small>
-	                  </div>
-                  <Group gap="sm">
+                  <Paper component={Stack} gap="md" className={project.id === selectedProjectId ? 'projectCard active' : 'projectCard'} key={project.id} p="md" radius="sm" withBorder>
+                    <Stack gap={2}>
+                      <Text fw={700}>{project.name}</Text>
+                      <Group gap="xs">
+                        <Text fw={700}>{project.documentCount}</Text>
+                        <Text size="sm" c="dimmed">created {new Date(project.createdAt).toLocaleDateString()}</Text>
+                      </Group>
+	                  </Stack>
+                    <Group gap="sm">
 	                    <Button variant="subtle" color="gray" onClick={() => setSelectedProjectId(project.id)} disabled={busy}>
 	                      Select
 	                    </Button>
@@ -1766,44 +1777,54 @@ export default function App() {
         )}
 
         {view === 'safeDebug' && (
-	          <SimpleGrid component="section" className="view" cols={{ base: 1, lg: 2 }} spacing="lg">
-	            <Stack component="section" gap="md">
-	              <Group align="end" gap="sm" grow>
-	                <TextInput value={debugTitle} onChange={(event) => setDebugTitle(event.target.value)} placeholder="BUG-123 or checkout failure" />
-	                <Button onClick={createDebugSession} disabled={busy || !debugTitle.trim()} title="Create session" leftSection={<Plus size={18} />}>Create</Button>
-	              </Group>
-
-              <section className="debugList">
-                <div className="surfaceHeader">
-                  <h2>Sessions</h2>
-                  <span>{debugSessions.length} active</span>
-                </div>
-                {debugSessions.map((session) => (
-                  <Paper component="article" className={session.id === activeDebugSessionId ? 'debugSessionRow active' : 'debugSessionRow'} key={session.id} p="sm" radius="sm" withBorder>
-                    <div>
-                      <strong>{session.title}</strong>
-                      <span>{session.id}</span>
-                      <small>Created {new Date(session.createdAt).toLocaleString()}</small>
-                      <small>Updated {new Date(session.updatedAt).toLocaleString()}</small>
-                    </div>
-	                    <Badge color={session.status === 'active' ? 'green' : 'gray'} variant="light">{session.status}</Badge>
-	                    <Group gap="sm">
-	                      <Button variant="subtle" color="gray" onClick={() => openDebugSession(session.id)} disabled={busy}>Open</Button>
-	                      <ActionIcon variant="light" color="gray" onClick={() => archiveDebugSession(session.id)} disabled={busy} title="Archive session"><Archive size={17} /></ActionIcon>
-	                    </Group>
-                  </Paper>
-                ))}
-                {debugSessions.length === 0 && <div className="empty richEmpty"><strong>No debug sessions</strong><span>Create a session before pasting query output. Raw pasted data stays local to the sanitize request and is not stored.</span></div>}
-              </section>
-
-	              <Paper component="section" className="debugInstruction" p="md" radius="sm" withBorder>
+	          <section className="view safeDebugLayout">
+	            <SimpleGrid component="section" className="safeDebugControls" cols={{ base: 1, md: 2 }} spacing="md">
+	              <Paper component="section" p="md" radius="sm" withBorder>
 	                <div className="surfaceHeader">
-	                  <h2>Claude instruction</h2>
-	                  <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(safeDebugInstruction)} title="Copy instruction"><Copy size={17} /></ActionIcon>
+	                  <h2>New session</h2>
+	                  <Plus size={18} />
 	                </div>
-                <pre>{safeDebugInstruction}</pre>
+	                <Group align="end" gap="sm" grow>
+	                  <TextInput value={debugTitle} onChange={(event) => setDebugTitle(event.target.value)} placeholder="BUG-123 or checkout failure" />
+	                  <Button onClick={createDebugSession} disabled={busy || !debugTitle.trim()} title="Create session" leftSection={<Plus size={18} />}>Create</Button>
+	                </Group>
+	              </Paper>
+
+              <Paper component="section" p="md" radius="sm" withBorder>
+                <div className="surfaceHeader">
+                  <h2>Active session</h2>
+                  <Badge color={activeDebugSession?.status === 'active' ? 'green' : 'gray'} variant="light">
+                    {activeDebugSession?.status ?? `${debugSessions.length} total`}
+                  </Badge>
+                </div>
+                <Stack gap="sm">
+                  <Select
+                    value={activeDebugSessionId || null}
+                    onChange={(value) => value && openDebugSession(value)}
+                    data={sortedDebugSessions.map((session) => ({
+                      value: session.id,
+                      label: `${session.title} · updated ${new Date(session.updatedAt).toLocaleDateString()}`,
+                    }))}
+                    placeholder="Select session"
+                    searchable
+                    nothingFoundMessage="No sessions"
+                    disabled={debugSessions.length === 0}
+                  />
+                  {activeDebugSession ? (
+                    <Stack gap={2}>
+                      <Text size="sm" c="dimmed" ff="monospace">{activeDebugSession.id}</Text>
+                      <Text size="sm" c="dimmed">Updated {new Date(activeDebugSession.updatedAt).toLocaleString()}</Text>
+                      <Group gap="sm" mt="xs">
+                        <Button variant="subtle" color="gray" onClick={() => openDebugSession(activeDebugSession.id)} disabled={busy}>Refresh</Button>
+                        <ActionIcon variant="light" color="gray" onClick={() => archiveDebugSession(activeDebugSession.id)} disabled={busy} title="Archive session"><Archive size={17} /></ActionIcon>
+                      </Group>
+                    </Stack>
+                  ) : (
+                    <Text size="sm" c="dimmed">Create or select a session before pasting query output.</Text>
+                  )}
+                </Stack>
               </Paper>
-            </Stack>
+            </SimpleGrid>
 
             <Stack component="section" gap="md">
               {debugDetail ? (
@@ -1820,9 +1841,27 @@ export default function App() {
                     </div>
                   </Paper>
 
+                  <Tabs defaultValue="workspace" keepMounted={false}>
+                    <Tabs.List>
+                      <Tabs.Tab value="workspace">Workspace</Tabs.Tab>
+                      <Tabs.Tab value="instruction">Agent instruction</Tabs.Tab>
+                    </Tabs.List>
+
+                    <Tabs.Panel value="instruction" pt="md">
+                      <Paper component="section" className="debugInstruction" p="md" radius="sm" withBorder>
+                        <div className="surfaceHeader">
+                          <h2>Agent instruction</h2>
+                          <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(activeSafeDebugInstruction)} title="Copy instruction"><Copy size={17} /></ActionIcon>
+                        </div>
+                        <pre>{activeSafeDebugInstruction}</pre>
+                      </Paper>
+                    </Tabs.Panel>
+
+                    <Tabs.Panel value="workspace" pt="md">
+                      <Stack gap="md">
                   <Paper component="section" className="debugPanel" p="md" radius="sm" withBorder>
                     <div className="surfaceHeader">
-                      <h2>Pending Claude Requests</h2>
+                      <h2>Pending agent requests</h2>
                       <span>{pendingDebugRequests.length} pending</span>
                     </div>
                     <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
@@ -1850,7 +1889,7 @@ export default function App() {
                           </Paper>
                         );
                       })}
-                      {debugDetail.dataRequests.length === 0 && <div className="empty">Claude has not created any structured data requests yet.</div>}
+                      {debugDetail.dataRequests.length === 0 && <div className="empty">No structured agent data requests yet.</div>}
                     </SimpleGrid>
                   </Paper>
 
@@ -1880,7 +1919,7 @@ export default function App() {
 	                        value={debugDataRequestId}
 	                        onChange={(event) => setDebugDataRequestId(event.target.value)}
 	                        data={[
-	                          { value: '', label: 'No linked Claude request' },
+	                          { value: '', label: 'No linked agent request' },
 	                          ...pendingDebugRequests.map((item) => ({
 	                            value: item.id,
 	                            label: `${item.entity}${item.parentToken ? ` for ${item.parentToken}` : ''}`,
@@ -1918,18 +1957,18 @@ export default function App() {
 	                          <Button variant="subtle" color="gray" onClick={() => copyDebugText(debugResolvedToken.realValue)} leftSection={<Copy size={16} />}>Copy real id</Button>
                         </div>
                       ) : (
-                        <div className="empty">Resolve a token to manually query the database without asking Claude for raw data.</div>
+                        <div className="empty">Resolve a token to manually query the database without asking an agent for raw data.</div>
                       )}
                     </Paper>
 
                     <Paper className="debugPanel" p="md" radius="sm" withBorder>
                       <div className="surfaceHeader">
-                        <h2>Claude requests</h2>
+                        <h2>Agent requests</h2>
                         <span>{debugDetail.notes.length}</span>
 	                      </div>
 	                      <Group align="end" gap="sm" grow>
-	                        <TextInput value={claudeRequestDraft} onChange={(event) => setClaudeRequestDraft(event.target.value)} placeholder="Need orders for USER_001" />
-	                        <Button onClick={recordClaudeRequest} disabled={busy || !claudeRequestDraft.trim()}>Record</Button>
+	                        <TextInput value={agentRequestDraft} onChange={(event) => setAgentRequestDraft(event.target.value)} placeholder="Need orders for USER_001" />
+	                        <Button onClick={recordAgentRequest} disabled={busy || !agentRequestDraft.trim()}>Record</Button>
 	                      </Group>
                       <Stack gap="md">
                         {debugDetail.notes.slice(0, 4).map((note) => (
@@ -2029,12 +2068,15 @@ export default function App() {
                       </Stack>
                     </Paper>
                   </SimpleGrid>
+                      </Stack>
+                    </Tabs.Panel>
+                  </Tabs>
                 </>
               ) : (
                 <div className="empty richEmpty"><strong>Select or create a debug session</strong><span>Sessions keep deterministic fake-to-real mappings so follow-up CSV, JSON, and logs reuse the same tokens.</span></div>
               )}
             </Stack>
-          </SimpleGrid>
+          </section>
         )}
 
         {view === 'optimizer' && (
@@ -2244,7 +2286,6 @@ export default function App() {
 	                        { value: 'compression', label: 'Compression', disabled: !settingsDraft.localLlm.enabled },
 	                      ]}
 	                    />
-	                    {!settingsDraft.localLlm.enabled && <small className="settingHint">Enable local LLM compression to use compression mode.</small>}
 	                  </label>
 	                  <label>
 	                    <span>Optimizer max tokens</span>
@@ -2258,6 +2299,11 @@ export default function App() {
 	                      })}
 	                    />
 	                  </label>
+	                  {!settingsDraft.localLlm.enabled && (
+	                    <Text className="settingHint" size="sm">
+	                      Enable local LLM compression to use compression mode.
+	                    </Text>
+	                  )}
 	                  <Checkbox
 	                    className="toggleRow"
 	                      checked={settingsDraft.localLlm.enabled}
@@ -2406,7 +2452,7 @@ export default function App() {
                     </div>
                   </Paper>
                   <Paper component="details" className="settingsGroup" p="md" radius="sm" withBorder>
-                    <summary>Repository Agent</summary>
+                    <summary>Repository sync</summary>
                     <div className="settingsGrid">
 	                  <label className="wideSetting">
 	                    <span>Repository path</span>
