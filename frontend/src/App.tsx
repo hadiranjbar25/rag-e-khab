@@ -2452,44 +2452,6 @@ export default function App() {
                     </div>
                   </Paper>
                   <Paper component="details" className="settingsGroup" p="md" radius="sm" withBorder>
-                    <summary>Repository sync</summary>
-                    <div className="settingsGrid">
-	                  <label className="wideSetting">
-	                    <span>Repository path</span>
-	                    <TextInput
-	                      value={settingsDraft.repositoryAgent.path}
-                      onChange={(event) => setSettingsDraft({
-                        ...settingsDraft,
-                        repositoryAgent: { ...settingsDraft.repositoryAgent, path: event.target.value }
-                      })}
-                    />
-                  </label>
-	                  <Checkbox
-	                    className="toggleRow"
-	                      checked={settingsDraft.repositoryAgent.scheduled}
-	                      onChange={(event) => setSettingsDraft({
-	                        ...settingsDraft,
-	                        repositoryAgent: { ...settingsDraft.repositoryAgent, scheduled: event.currentTarget.checked }
-	                      })}
-	                    label="Enable scheduled repository scan"
-	                  />
-	                  <label>
-	                    <span>Repository scan interval ms</span>
-	                    <NumberInput
-	                      min={30000}
-	                      value={settingsDraft.repositoryAgent.intervalMs}
-	                      onChange={(value) => setSettingsDraft({
-	                        ...settingsDraft,
-	                        repositoryAgent: { ...settingsDraft.repositoryAgent, intervalMs: Number(value) || 30000 }
-	                      })}
-	                    />
-                  </label>
-                  <div className="wideSetting settingHint">
-                    Repositories are registered by the external agent or MCP tooling. Use the Repositories page to link discovered repositories to projects.
-                  </div>
-                    </div>
-                  </Paper>
-                  <Paper component="details" className="settingsGroup" p="md" radius="sm" withBorder>
                     <summary>Storage diagnostics</summary>
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                       <Box>

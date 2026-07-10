@@ -58,13 +58,10 @@ private fun runRepositoryAgent(options: CliOptions, log: (String) -> Unit) {
 
     val repository = options.repository ?: root.fileName?.toString()?.takeIf { it.isNotBlank() } ?: "repository"
     val discovered = discoverFiles(root, options.maxFileBytes)
-    val files = when (options.profile) {
-        SyncProfile.Claude -> buildClaudeContext(repository, root, discovered)
-        SyncProfile.Source -> discovered
-    }
+    val files = buildClaudeContext(repository, root, discovered)
     log("RAG-e Khab agent scanning $repository at $root")
     log("Discovered ${discovered.size} indexable file(s)")
-    log("Sync profile '${options.profile.value}' will send ${files.size} context artifact(s)")
+    log("Compact sync will send ${files.size} context artifact(s)")
 
     if (options.dryRun) {
         files.take(40).forEach { log("${it.path} (${it.language}, ${it.sizeBytes} bytes)") }
@@ -123,7 +120,6 @@ private data class CliOptions(
     val server: String = System.getenv("RAGEKHAB_URL") ?: "http://localhost:8060",
     val repository: String? = null,
     val path: Path = Path.of("."),
-    val profile: SyncProfile = SyncProfile.Claude,
     val full: Boolean = true,
     val dryRun: Boolean = false,
     val maxBatchBytes: Int = 4_000_000,
@@ -145,8 +141,19 @@ private data class CliOptions(
                     "--server" -> options.copy(server = value().trimEnd('/'))
                     "--repository", "--name" -> options.copy(repository = value())
                     "--path" -> options.copy(path = Path.of(value()))
-                    "--profile" -> options.copy(profile = SyncProfile.parse(value()))
-                    "--include-source" -> options.copy(profile = if (value().toBooleanStrictOrNull() == true) SyncProfile.Source else SyncProfile.Claude)
+                    "--profile" -> {
+                        val profile = value().lowercase()
+                        require(profile == "claude" || profile == "compact" || profile == "agent") {
+                            "Unsupported profile '$profile'. Full source sync is no longer supported; compact agent context is always used."
+                        }
+                        options
+                    }
+                    "--include-source" -> {
+                        require(value().toBooleanStrictOrNull() != true) {
+                            "--include-source is no longer supported; compact agent context is always used."
+                        }
+                        options
+                    }
                     "--full" -> options.copy(full = value().toBooleanStrictOrNull() ?: error("--full must be true or false"))
                     "--dry-run" -> options.copy(dryRun = true)
                     "--max-batch-bytes" -> options.copy(maxBatchBytes = value().toInt().coerceAtLeast(250_000))
@@ -161,17 +168,6 @@ private data class CliOptions(
     }
 }
 
-private enum class SyncProfile(val value: String) {
-    Claude("claude"),
-    Source("source");
-
-    companion object {
-        fun parse(value: String): SyncProfile =
-            entries.firstOrNull { it.value == value.lowercase() }
-                ?: error("Unsupported profile '$value'. Use: ${entries.joinToString { it.value }}")
-    }
-}
-
 private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
     private val preferences = Preferences.userNodeForPackage(RepositoryAgentUi::class.java)
     private val serverField = JTextField(preferences.get("server", System.getenv("RAGEKHAB_URL") ?: "http://localhost:8060"))
@@ -179,9 +175,6 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
     private val pathBox = JComboBox(recentPaths().toTypedArray()).apply {
         isEditable = true
         selectedItem = Path.of(".").toAbsolutePath().normalize().toString()
-    }
-    private val profileBox = JComboBox(SyncProfile.entries.map { it.value }.toTypedArray()).apply {
-        selectedItem = SyncProfile.Claude.value
     }
     private val fullCheck = JCheckBox("Full sync cleanup", true)
     private val dryRunCheck = JCheckBox("Dry run")
@@ -214,7 +207,6 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
         panel.addRow(row++, "Server", serverField)
         panel.addRow(row++, "Repository name", repositoryField)
         panel.addPathRow(row++)
-        panel.addRow(row++, "Profile", profileBox)
         panel.addRow(row++, "Max batch bytes", maxBatchBytesField)
         panel.addRow(row++, "Max file bytes", maxFileBytesField)
         panel.addOptionsRow(row++)
@@ -286,7 +278,6 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
             server = server,
             repository = repositoryField.text.trim().takeIf { it.isNotBlank() },
             path = Path.of(path),
-            profile = SyncProfile.parse(profileBox.selectedItem.toString()),
             full = fullCheck.isSelected,
             dryRun = dryRunCheck.isSelected,
             maxBatchBytes = maxBatchBytesField.text.trim().toIntOrNull()?.coerceAtLeast(250_000) ?: 4_000_000,
@@ -796,8 +787,7 @@ private fun usage(): String =
       --repository NAME         Stable repository name. Default: scanned folder name
       --name NAME               Alias for --repository
       --path PATH               Repository path to scan. Default: current directory
-      --profile claude|source   claude sends repo map/summaries/key docs. source sends all files. Default: claude
-      --include-source true     Alias for --profile source
+      --profile claude          Compatibility option; compact agent context is always used
       --full true|false         Send full-sync cleanup marker. Default: true
       --max-batch-bytes N       Approximate sync batch size. Default: 4000000
       --max-file-bytes N        Skip files larger than N bytes. Default: 1000000

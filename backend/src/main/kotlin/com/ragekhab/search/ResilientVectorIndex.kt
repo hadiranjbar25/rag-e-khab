@@ -1,7 +1,6 @@
 package com.ragekhab.search
 
 import com.ragekhab.document.DocumentChunk
-import com.ragekhab.document.DocumentRepository
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Component
@@ -12,47 +11,53 @@ import java.util.UUID
 class ResilientVectorIndex(
     private val qdrant: QdrantVectorIndex,
     private val memory: MemoryVectorIndex,
-    private val documents: DocumentRepository,
 ) : VectorIndex {
     private val logger = LoggerFactory.getLogger(javaClass)
-    @Volatile private var usingQdrant = true
+    @Volatile private var qdrantHealthy = true
 
     override fun upsert(chunks: List<DocumentChunk>) {
-        if (!usingQdrant) memory.upsert(chunks)
-        runQdrant("upsert") { qdrant.upsert(chunks) }
+        if (chunks.isEmpty()) return
+        runCatching {
+            qdrant.upsert(chunks)
+            qdrantHealthy = true
+        }.onFailure {
+            markFallback("upsert", it)
+            memory.upsert(chunks)
+        }
     }
 
     override fun search(query: String, limit: Int, projectId: UUID?): List<SearchResult> =
-        if (usingQdrant) {
-            runCatching { qdrant.search(query, limit, projectId) }
-                .onFailure { markFallback("search", it) }
-                .getOrElse { memory.search(query, limit, projectId) }
-                .let { if (usingQdrant) it else it.ifEmpty { memory.search(query, limit, projectId) } }
-        } else {
+        runCatching {
+            qdrant.search(query, limit, projectId).also { qdrantHealthy = true }
+        }.getOrElse {
+            markFallback("search", it)
             memory.search(query, limit, projectId)
         }
 
     override fun deleteDocument(documentId: UUID) {
-        if (!usingQdrant) memory.deleteDocument(documentId)
-        runQdrant("delete") { qdrant.deleteDocument(documentId) }
+        runCatching {
+            qdrant.deleteDocument(documentId)
+            qdrantHealthy = true
+        }.onFailure {
+            markFallback("delete", it)
+            memory.deleteDocument(documentId)
+        }
     }
 
     override fun reindex(chunks: List<DocumentChunk>) {
-        if (!usingQdrant) memory.reindex(chunks)
-        runQdrant("reindex") { qdrant.reindex(chunks) }
+        runCatching {
+            qdrant.reindex(chunks)
+            qdrantHealthy = true
+        }.onFailure {
+            markFallback("reindex", it)
+            memory.reindex(chunks)
+        }
     }
 
-    override fun status(): String = if (usingQdrant) "qdrant" else "memory-fallback"
-
-    private fun runQdrant(operation: String, block: () -> Unit) {
-        if (!usingQdrant) return
-        runCatching(block).onFailure { markFallback(operation, it) }
-    }
+    override fun status(): String = if (qdrantHealthy) "qdrant" else "memory-fallback"
 
     private fun markFallback(operation: String, throwable: Throwable) {
-        usingQdrant = false
-        logger.warn("Qdrant {} failed; rebuilding in-memory vector index from persisted documents", operation, throwable)
-        runCatching { memory.reindex(documents.allChunks()) }
-            .onFailure { logger.error("Failed to rebuild in-memory vector index fallback", it) }
+        qdrantHealthy = false
+        logger.warn("Qdrant {} failed; using lightweight in-memory fallback for this request", operation, throwable)
     }
 }

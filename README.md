@@ -265,7 +265,7 @@ Repository
 -> Qdrant
 ```
 
-The recommended agent is a standalone JAR that you run inside each repository. It discovers source files locally and sends a Claude-oriented repository context to RAG-e Khab over HTTP, so the backend does not need Docker access to your host filesystem.
+The recommended agent is a standalone JAR that you run inside each repository. It discovers source files locally and sends compact coding-agent repository context to RAG-e Khab over HTTP, so the backend does not need Docker access to your host filesystem.
 
 By default, the JAR does not upload every source file. It sends:
 
@@ -294,7 +294,7 @@ Open the desktop agent UI:
 java -jar /path/to/RAGEKHAB/agent/build/libs/ragekhab-agent.jar
 ```
 
-The UI lets you select the repository folder to scan, set the RAG-e Khab server URL, choose the sync profile, and run a dry run or full sync. Use `claude` for compact coding-agent context, and use `source` only when you intentionally want broad source-file indexing.
+The UI lets you select the repository folder to scan, set the RAG-e Khab server URL, and run a dry run or full sync. The agent always sends compact coding-agent context instead of broad raw source indexing.
 
 Run it from any repository:
 
@@ -316,22 +316,11 @@ java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --repositor
 Useful options:
 
 ```text
---profile claude|source   claude sends compact repo intelligence. source sends all files. Default: claude
---include-source true     Alias for --profile source
+--profile claude          Compatibility option; compact agent context is always used
 --full true|false         Delete files that disappeared from the repo when true. Default: true
 --dry-run                 Show discovered files without sending them
 --max-batch-bytes N       Approximate HTTP sync batch size
 --max-file-bytes N        Skip very large files
-```
-
-Only use full source sync when you intentionally want RAG-e Khab to store the code content:
-
-```bash
-java -jar /path/to/ragekhab-agent.jar \
-  --server http://localhost:8060 \
-  --repository billing-api \
-  --path /repos/billing-api \
-  --profile source
 ```
 
 Server-side scanning is still available for mounted paths or local backend development. Configure the repository path:
@@ -459,7 +448,6 @@ The same runtime settings are configurable from the Admin panel at `/admin`:
 - Optimizer mode and max token budget
 - Local LLM compression toggle, provider, base URL, and model
 - Embedding provider, model, base URL, and dimensions
-- Repository Agent path, scheduled scan toggle, and scan interval
 
 Panel changes are persisted to `runtime-settings.json` in the configured storage directory and apply to future requests without rebuilding the app.
 
