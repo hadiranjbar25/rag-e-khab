@@ -197,7 +197,7 @@ class ContextOptimizationPipeline(
         return if (top == null) {
             "No indexed context was found for task: $task."
         } else {
-            "Most relevant context for '$task' is concentrated in ${top.documentName}; ${selected.map { it.result.documentName }.distinct().size} source(s) selected for Claude Code."
+            "Most relevant context for '$task' is concentrated in ${top.documentName}; ${selected.map { it.result.documentName }.distinct().size} source(s) selected for the coding agent."
         }
     }
 

@@ -131,7 +131,7 @@ class McpController(
                 UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")),
                 arguments["token"]?.toString() ?: error("Missing token"),
             )
-            "record_claude_request" -> debugSessions.recordClaudeRequest(
+            "record_agent_request", "record_claude_request" -> debugSessions.recordAgentRequest(
                 UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")),
                 arguments["request"]?.toString() ?: error("Missing request"),
             )
@@ -184,11 +184,11 @@ class McpController(
         tool("list_debug_sessions", "List active Safe Debug Sessions. Returns session metadata only.", emptyMap()),
         tool("get_debug_session_context", "Return sanitized Safe Debug Session artifacts and token names only. Raw pasted data and real values are never returned.", mapOf("sessionId" to "string")),
         tool("resolve_debug_token", "Sensitive local-only tool: resolve one Safe Debug token to its real database identifier so the developer can manually query more data.", mapOf("sessionId" to "string", "token" to "string")),
-        tool("record_claude_request", "Record a Claude request for more sanitized data in a Safe Debug Session.", mapOf("sessionId" to "string", "request" to "string")),
+        tool("record_agent_request", "Record an agent request for more sanitized data in a Safe Debug Session.", mapOf("sessionId" to "string", "request" to "string")),
         tool("create_debug_data_request", "Create a structured pending Safe Debug data request. Returns only request id and status; never raw data or real IDs.", mapOf("sessionId" to "string", "entity" to "string", "relation" to "string", "parentToken" to "string", "reason" to "string", "requestedFields" to "array")),
         tool("list_debug_data_requests", "List Safe Debug data request statuses and sanitized request summaries for a session. Does not return real IDs or SQL.", mapOf("sessionId" to "string")),
         tool("get_debug_session_state", "Return sanitized Safe Debug artifacts, request summaries, timeline, and notes. Does not return raw data, token real values, or real SQL.", mapOf("sessionId" to "string")),
-        tool("optimize_context", "Return the smallest Claude Code context needed to complete a coding task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
+        tool("optimize_context", "Return the smallest useful coding-agent context needed to complete a task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
         tool("ask_knowledge_base", "Ask a question and receive an answer with sources, optionally within a project.", mapOf("question" to "string", "limit" to "number", "projectId" to "string")),
         tool("list_documents", "List uploaded documents, optionally within a project.", mapOf("projectId" to "string")),
         tool("get_document", "Return document metadata and chunks.", mapOf("id" to "string")),

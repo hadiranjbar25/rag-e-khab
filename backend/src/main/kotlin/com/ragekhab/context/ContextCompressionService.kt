@@ -25,11 +25,11 @@ class ContextCompressionService(
             "[${chunk.documentName} | ${chunk.chunkId} | score ${"%.3f".format(chunk.score)}]\n${chunk.text.take(1_200)}"
         }
         val prompt = """
-            You compress repository context for Claude Code.
+            You compress repository context for a coding agent.
             Return strict JSON only. No markdown.
             Keep only information needed to complete the task.
             Split into:
-            - criticalContext: facts Claude Code likely needs to edit correctly
+            - criticalContext: facts the coding agent likely needs to edit correctly
             - importantContext: useful implementation patterns and constraints
             - optionalContext: lower priority hints only if budget remains
             Each item must be one compact sentence prefixed with its source filename.

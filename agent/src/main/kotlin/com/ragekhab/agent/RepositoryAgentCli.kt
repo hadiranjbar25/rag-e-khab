@@ -58,7 +58,7 @@ private fun runRepositoryAgent(options: CliOptions, log: (String) -> Unit) {
 
     val repository = options.repository ?: root.fileName?.toString()?.takeIf { it.isNotBlank() } ?: "repository"
     val discovered = discoverFiles(root, options.maxFileBytes)
-    val files = buildClaudeContext(repository, root, discovered)
+    val files = buildCompactAgentContext(repository, root, discovered)
     log("RAG-e Khab agent scanning $repository at $root")
     log("Discovered ${discovered.size} indexable file(s)")
     log("Compact sync will send ${files.size} context artifact(s)")
@@ -361,7 +361,7 @@ private fun toAgentFile(root: Path, path: Path, maxFileBytes: Long): AgentFile? 
     )
 }
 
-private fun buildClaudeContext(repository: String, root: Path, files: List<AgentFile>): List<AgentFile> {
+private fun buildCompactAgentContext(repository: String, root: Path, files: List<AgentFile>): List<AgentFile> {
     val artifacts = mutableListOf<AgentFile>()
     artifacts += virtualFile(
         path = ".ragekhab/repository-map.md",
@@ -428,11 +428,11 @@ private fun repositoryMap(repository: String, root: Path, files: List<AgentFile>
     directoryTree(files).forEach { appendLine(it) }
     appendLine("```")
     appendLine()
-    appendLine("## Claude Code Usage")
+    appendLine("## Coding Agent Usage")
     appendLine()
     appendLine("- Start with `.ragekhab/repository-map.md` and `.ragekhab/source-index.md`.")
     appendLine("- Use `.ragekhab/modules/*.md` to choose the smallest set of source files to inspect.")
-    appendLine("- Prefer AGENTS.md, CLAUDE.md, README files, build configs, and docs before source exploration.")
+    appendLine("- Prefer AGENTS.md, README files, build configs, and docs before source exploration.")
     appendLine("- Do not assume full source is indexed; use local file reads for exact implementation edits.")
 }
 

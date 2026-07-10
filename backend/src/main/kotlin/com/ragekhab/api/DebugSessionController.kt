@@ -10,7 +10,7 @@ import com.ragekhab.debug.DebugSessionDetail
 import com.ragekhab.debug.DebugSessionService
 import com.ragekhab.debug.DebugTokenMapping
 import com.ragekhab.debug.PromoteDebugMemoryRequest
-import com.ragekhab.debug.RecordClaudeRequest
+import com.ragekhab.debug.RecordAgentRequest
 import com.ragekhab.debug.SanitizeDebugRequest
 import com.ragekhab.debug.SanitizeDebugResponse
 import com.ragekhab.memory.AgentMemory
@@ -52,9 +52,13 @@ class DebugSessionController(
     fun resolve(@PathVariable sessionId: UUID, @PathVariable token: String): DebugTokenMapping =
         debugSessions.resolveToken(sessionId, token)
 
+    @PostMapping("/{sessionId}/agent-requests")
+    fun recordAgentRequest(@PathVariable sessionId: UUID, @RequestBody request: RecordAgentRequest) =
+        debugSessions.recordAgentRequest(sessionId, request.request)
+
     @PostMapping("/{sessionId}/claude-requests")
-    fun recordClaudeRequest(@PathVariable sessionId: UUID, @RequestBody request: RecordClaudeRequest) =
-        debugSessions.recordClaudeRequest(sessionId, request.request)
+    fun recordClaudeRequest(@PathVariable sessionId: UUID, @RequestBody request: RecordAgentRequest) =
+        debugSessions.recordAgentRequest(sessionId, request.request)
 
     @GetMapping("/{sessionId}/data-requests")
     fun dataRequests(@PathVariable sessionId: UUID) =

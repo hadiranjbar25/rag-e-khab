@@ -141,7 +141,7 @@ data class DebugSessionDetail(
     val auditEvents: List<DebugAuditEvent>,
 )
 
-data class RecordClaudeRequest(val request: String)
+data class RecordAgentRequest(val request: String)
 
 data class CreateDebugDataRequest(
     val entity: String,

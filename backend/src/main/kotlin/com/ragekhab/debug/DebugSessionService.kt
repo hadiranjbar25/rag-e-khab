@@ -127,7 +127,7 @@ class DebugSessionService(
             completedAt = request.completedAt,
         )
 
-    fun recordClaudeRequest(sessionId: UUID, request: String): DebugNote {
+    fun recordAgentRequest(sessionId: UUID, request: String): DebugNote {
         requireSession(sessionId)
         val note = store.saveNote(
             DebugNote(
@@ -138,7 +138,7 @@ class DebugSessionService(
             ),
         )
         touch(sessionId)
-        audit(sessionId, "claude_request_recorded", note.request.take(120))
+        audit(sessionId, "agent_request_recorded", note.request.take(120))
         return note
     }
 
