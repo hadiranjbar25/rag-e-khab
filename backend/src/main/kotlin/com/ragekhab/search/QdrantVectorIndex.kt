@@ -53,6 +53,11 @@ class QdrantVectorIndex(
                 chunkId = payload["chunkId"].toString(),
                 score = row["score"]?.toString()?.toDoubleOrNull() ?: 0.0,
                 text = payload["text"].toString(),
+                rawArtifactId = payload["rawArtifactId"]?.toString(),
+                artifactKind = payload["artifactKind"]?.toString(),
+                rawTokenEstimate = payload["rawTokenEstimate"]?.toString()?.toIntOrNull(),
+                compressedTokenEstimate = payload["compressedTokenEstimate"]?.toString()?.toIntOrNull(),
+                reductionPercent = payload["reductionPercent"]?.toString()?.toIntOrNull(),
             )
         }
     }
@@ -105,6 +110,11 @@ class QdrantVectorIndex(
                 "documentName" to documentName,
                 "pageNumber" to pageNumber,
                 "text" to text,
+                "rawArtifactId" to rawArtifactId?.toString(),
+                "artifactKind" to artifactKind?.name,
+                "rawTokenEstimate" to rawTokenEstimate,
+                "compressedTokenEstimate" to compressedTokenEstimate,
+                "reductionPercent" to reductionPercent,
             ),
         )
 

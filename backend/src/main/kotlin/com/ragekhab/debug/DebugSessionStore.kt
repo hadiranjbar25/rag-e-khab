@@ -28,6 +28,8 @@ class DebugSessionStore(
     @Synchronized
     fun saveArtifact(artifact: DebugArtifact): DebugArtifact = state.put(ARTIFACTS_STORE, artifact.id, artifact)
 
+    fun getArtifact(id: UUID): DebugArtifact? = state.get(ARTIFACTS_STORE, id, DebugArtifact::class.java)
+
     fun artifactsFor(sessionId: UUID): List<DebugArtifact> =
         state.list(ARTIFACTS_STORE, DebugArtifact::class.java)
             .filter { it.sessionId == sessionId }

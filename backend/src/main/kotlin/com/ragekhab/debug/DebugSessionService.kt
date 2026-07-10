@@ -3,9 +3,12 @@ package com.ragekhab.debug
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.TextNode
+import com.ragekhab.artifact.CompressionInput
+import com.ragekhab.artifact.ContextCompressor
 import com.ragekhab.memory.AgentMemory
 import com.ragekhab.memory.MemoryService
 import com.ragekhab.memory.RememberRequest
+import com.ragekhab.document.ArtifactKind
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
@@ -15,6 +18,7 @@ class DebugSessionService(
     private val store: DebugSessionStore,
     private val mapper: ObjectMapper,
     private val memoryService: MemoryService,
+    private val compressors: List<ContextCompressor>,
 ) {
     fun create(title: String): DebugSession {
         val now = Instant.now()
@@ -63,6 +67,7 @@ class DebugSessionService(
             DebugInputType.log -> sanitizeLog(request.rawText, context)
         }
         val now = Instant.now()
+        val compressed = compressSanitizedArtifact(context.sourceName, request.inputType, sanitized)
         val artifact = store.saveArtifact(
             DebugArtifact(
                 id = UUID.randomUUID(),
@@ -70,6 +75,10 @@ class DebugSessionService(
                 inputType = request.inputType,
                 sourceName = context.sourceName,
                 sanitizedText = sanitized,
+                compactText = compressed.text,
+                rawTokenEstimate = compressed.metrics.rawTokenEstimate,
+                compressedTokenEstimate = compressed.metrics.compressedTokenEstimate,
+                reductionPercent = compressed.metrics.reductionPercent,
                 warningSummary = warnings.toList(),
                 dataRequestId = request.dataRequestId,
                 createdAt = now,
@@ -210,7 +219,7 @@ class DebugSessionService(
         val detail = detail(sessionId)
         return DebugSessionContext(
             session = detail.session,
-            artifacts = detail.artifacts,
+            artifacts = detail.artifacts.map(::agentFacingArtifact),
             tokens = detail.tokenMappings.map {
                 DebugSafeToken(
                     token = it.token,
@@ -229,10 +238,26 @@ class DebugSessionService(
         val detail = detail(sessionId)
         return DebugSessionState(
             session = detail.session,
-            artifacts = detail.artifacts,
+            artifacts = detail.artifacts.map(::agentFacingArtifact),
             dataRequests = detail.dataRequests.map(::safeDataRequest),
             timeline = detail.auditEvents,
             notes = detail.notes,
+        )
+    }
+
+    fun artifactSlice(sessionId: UUID, artifactId: UUID, beforeLine: Int, afterLine: Int): DebugArtifactSlice {
+        requireSession(sessionId)
+        val artifact = store.getArtifact(artifactId) ?: error("Debug artifact not found.")
+        require(artifact.sessionId == sessionId) { "Debug artifact does not belong to this session." }
+        val lines = artifact.sanitizedText.lines()
+        val start = beforeLine.coerceAtLeast(1).coerceAtMost(lines.size.coerceAtLeast(1))
+        val end = afterLine.coerceAtLeast(start).coerceAtMost(lines.size.coerceAtLeast(1))
+        audit(sessionId, "debug_artifact_slice_expanded", "$artifactId:$start-$end")
+        return DebugArtifactSlice(
+            artifactId = artifactId,
+            startLine = start,
+            endLine = end,
+            text = if (lines.isEmpty()) "" else lines.subList(start - 1, end).joinToString("\n"),
         )
     }
 
@@ -240,6 +265,31 @@ class DebugSessionService(
         requireSession(sessionId)
         audit(sessionId, "artifact_copied_exported", artifactId?.toString() ?: "instruction_or_sanitized_output")
     }
+
+    private fun compressSanitizedArtifact(sourceName: String, inputType: DebugInputType, sanitized: String) =
+        compressorFor(inputType.toArtifactKind()).compress(
+            CompressionInput(
+                title = sourceName,
+                kind = inputType.toArtifactKind(),
+                content = sanitized,
+            ),
+        )
+
+    private fun compressorFor(kind: ArtifactKind): ContextCompressor =
+        compressors.firstOrNull { it.supports(kind) } ?: compressors.first { it.supports(ArtifactKind.TEXT) }
+
+    private fun DebugInputType.toArtifactKind(): ArtifactKind =
+        when (this) {
+            DebugInputType.csv -> ArtifactKind.QUERY_RESULT
+            DebugInputType.json -> ArtifactKind.TEXT
+            DebugInputType.log -> ArtifactKind.LOG
+        }
+
+    private fun agentFacingArtifact(artifact: DebugArtifact): DebugArtifact =
+        artifact.compactText
+            ?.takeIf { it.isNotBlank() }
+            ?.let { artifact.copy(sanitizedText = it) }
+            ?: artifact
 
     private fun sanitizeCsv(raw: String, context: SanitizeContext): String {
         val rows = parseCsv(raw)
@@ -282,6 +332,9 @@ class DebugSessionService(
 
     private fun sanitizeLog(raw: String, context: SanitizeContext): String = sanitizeFreeText(raw, context, "free_text")
 
+    private fun looksLikeTimestamp(value: String): Boolean =
+        timestampLikeRegex.containsMatchIn(value) || dateLikeRegex.matches(value.trim())
+
     private fun sanitizeFreeText(raw: String, context: SanitizeContext, field: String): String {
         var output = raw
         knownMappings(context.sessionId).forEach { mapping ->
@@ -304,6 +357,7 @@ class DebugSessionService(
             tokenFor(context, "EMAIL", "free_text", "email", it.value)
         }
         output = phoneRegex.replace(output) {
+            if (looksLikeTimestamp(it.value)) return@replace it.value
             context.warnings.add(DebugWarningType.phone, "Detected phone number in free text.", field)
             tokenFor(context, "PHONE", "free_text", "phone", it.value)
         }
@@ -591,7 +645,9 @@ class DebugSessionService(
 
     companion object {
         private val emailRegex = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
-        private val phoneRegex = Regex("""(?:\+?\d[\d\s().-]{7,}\d)""")
+        private val phoneRegex = Regex("""(?<![A-Za-z0-9_])(?:\+?\d[\d \t().-]{7,}\d)(?![A-Za-z0-9_])""")
+        private val timestampLikeRegex = Regex("""\b\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b""")
+        private val dateLikeRegex = Regex("""\d{4}-\d{2}-\d{2}""")
         private val cardRegex = Regex("""(?:\d[ -]*?){13,19}""")
         private val ibanRegex = Regex("""[A-Z]{2}\d{2}[A-Z0-9]{11,30}""", RegexOption.IGNORE_CASE)
         private val ssnRegex = Regex("""\b\d{3}-\d{2}-\d{4}\b""")

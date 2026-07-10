@@ -11,4 +11,9 @@ fun DocumentChunk.toResult(score: Double) = SearchResult(
     chunkId = id,
     score = score,
     text = text,
+    rawArtifactId = rawArtifactId?.toString(),
+    artifactKind = artifactKind?.name,
+    rawTokenEstimate = rawTokenEstimate,
+    compressedTokenEstimate = compressedTokenEstimate,
+    reductionPercent = reductionPercent,
 )

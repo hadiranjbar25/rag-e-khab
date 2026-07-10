@@ -11,3 +11,4 @@ ADRs are intentionally short. Each one explains the context, the decision, and t
 - [0003 - Postgres for durable application state](0003-postgres-durable-state.md)
 - [0004 - Safe Debug Sessions keep sensitive data temporary](0004-safe-debug-sensitive-data-boundary.md)
 - [0005 - HTTP MCP as the agent integration boundary](0005-http-mcp-agent-boundary.md)
+- [0006 - Preview agent context before use](0006-previewable-agent-context.md)

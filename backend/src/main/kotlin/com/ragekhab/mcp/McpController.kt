@@ -1,9 +1,12 @@
 package com.ragekhab.mcp
 
 import com.ragekhab.chat.ChatService
+import com.ragekhab.artifact.ArtifactService
 import com.ragekhab.context.ContextOptimizationRequest
 import com.ragekhab.context.ContextOptimizerService
 import com.ragekhab.debug.CreateDebugDataRequest
+import com.ragekhab.document.ArtifactIngestionRequest
+import com.ragekhab.document.ArtifactKind
 import com.ragekhab.document.DocumentService
 import com.ragekhab.debug.DebugSessionService
 import com.ragekhab.memory.MemoryService
@@ -42,6 +45,7 @@ class McpController(
     private val repositoryAgent: RepositoryAgentService,
     private val contextPackages: RepositoryContextPackageService,
     private val documentService: DocumentService,
+    private val artifactService: ArtifactService,
     private val projectService: ProjectService,
     private val debugSessions: DebugSessionService,
     private val objectMapper: ObjectMapper,
@@ -75,6 +79,14 @@ class McpController(
             "create_project" -> projectService.create(CreateProjectRequest(arguments["name"].toString(), arguments["description"]?.toString()))
             "list_projects" -> mapOf("projects" to projectService.list())
             "add_text" -> documentService.addText(arguments["title"].toString(), arguments["text"].toString(), projectId)
+            "add_artifact" -> artifactService.ingest(
+                ArtifactIngestionRequest(
+                    title = arguments["title"]?.toString() ?: error("Missing title"),
+                    content = arguments["content"]?.toString() ?: error("Missing content"),
+                    kind = arguments["kind"]?.toString()?.let(::parseArtifactKind) ?: ArtifactKind.TEXT,
+                    projectId = projectId?.toString(),
+                ),
+            )
             "search_documents" -> mapOf("results" to searchService.search(arguments["query"].toString(), arguments["limit"]?.toString()?.toIntOrNull() ?: 8, projectId))
             "remember" -> memoryService.remember(
                 RememberRequest(
@@ -149,6 +161,12 @@ class McpController(
                 "requests" to debugSessions.listDataRequests(UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId"))),
             )
             "get_debug_session_state" -> debugSessions.stateForMcp(UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")))
+            "get_debug_artifact_slice" -> debugSessions.artifactSlice(
+                UUID.fromString(arguments["sessionId"]?.toString() ?: error("Missing sessionId")),
+                UUID.fromString(arguments["artifactId"]?.toString() ?: error("Missing artifactId")),
+                arguments["beforeLine"]?.toString()?.toIntOrNull() ?: error("Missing beforeLine"),
+                arguments["afterLine"]?.toString()?.toIntOrNull() ?: error("Missing afterLine"),
+            )
             "optimize_context" -> optimizerService.optimize(
                 ContextOptimizationRequest(
                     task = arguments["task"]?.toString() ?: error("Missing task"),
@@ -163,6 +181,16 @@ class McpController(
             "ask_knowledge_base" -> chatService.ask(arguments["question"].toString(), arguments["limit"]?.toString()?.toIntOrNull() ?: 8, projectId)
             "list_documents" -> mapOf("documents" to documentService.list(projectId))
             "get_document" -> documentService.get(UUID.fromString(arguments["id"].toString())) ?: error("Document not found")
+            "get_raw_artifact" -> artifactService.getRawArtifact(UUID.fromString(arguments["id"]?.toString() ?: error("Missing artifact id")))
+                ?: error("Artifact not found")
+            "get_artifact_slice" -> artifactService.getArtifactSlice(
+                UUID.fromString(arguments["id"]?.toString() ?: error("Missing artifact id")),
+                arguments["beforeLine"]?.toString()?.toIntOrNull() ?: error("Missing beforeLine"),
+                arguments["afterLine"]?.toString()?.toIntOrNull() ?: error("Missing afterLine"),
+            ) ?: error("Artifact not found")
+            "get_related_raw_context" -> artifactService.getRelatedRawContext(
+                UUID.fromString(arguments["compressedArtifactId"]?.toString() ?: error("Missing compressedArtifactId")),
+            ) ?: error("Related raw artifact not found")
             "delete_document" -> mapOf("deleted" to documentService.delete(UUID.fromString(arguments["id"].toString())))
             else -> error("Unknown tool '$name'")
         }
@@ -172,6 +200,7 @@ class McpController(
         tool("create_project", "Create a project for grouping documents.", mapOf("name" to "string", "description" to "string")),
         tool("list_projects", "List knowledge base projects.", emptyMap()),
         tool("add_text", "Add typed or pasted text to the knowledge base.", mapOf("title" to "string", "text" to "string", "projectId" to "string")),
+        tool("add_artifact", "Store raw developer artifact and index a compressed representation by default.", mapOf("title" to "string", "content" to "string", "kind" to "string", "projectId" to "string")),
         tool("search_documents", "Search indexed private documents semantically, optionally within a project.", mapOf("query" to "string", "limit" to "number", "projectId" to "string")),
         tool("remember", "Store a durable structured memory for future coding-agent sessions.", mapOf("type" to "string", "content" to "string", "confidence" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
         tool("recall_memory", "Retrieve relevant long-term memories before working on a coding task.", mapOf("task" to "string", "limit" to "number", "repository" to "string", "module" to "string", "type" to "string", "projectId" to "string")),
@@ -188,10 +217,14 @@ class McpController(
         tool("create_debug_data_request", "Create a structured pending Safe Debug data request. Returns only request id and status; never raw data or real IDs.", mapOf("sessionId" to "string", "entity" to "string", "relation" to "string", "parentToken" to "string", "reason" to "string", "requestedFields" to "array")),
         tool("list_debug_data_requests", "List Safe Debug data request statuses and sanitized request summaries for a session. Does not return real IDs or SQL.", mapOf("sessionId" to "string")),
         tool("get_debug_session_state", "Return sanitized Safe Debug artifacts, request summaries, timeline, and notes. Does not return raw data, token real values, or real SQL.", mapOf("sessionId" to "string")),
+        tool("get_debug_artifact_slice", "Explicit expansion: return an inclusive sanitized raw artifact line slice from a Safe Debug Session.", mapOf("sessionId" to "string", "artifactId" to "string", "beforeLine" to "number", "afterLine" to "number")),
         tool("optimize_context", "Return the smallest useful coding-agent context needed to complete a task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
         tool("ask_knowledge_base", "Ask a question and receive an answer with sources, optionally within a project.", mapOf("question" to "string", "limit" to "number", "projectId" to "string")),
         tool("list_documents", "List uploaded documents, optionally within a project.", mapOf("projectId" to "string")),
         tool("get_document", "Return document metadata and chunks.", mapOf("id" to "string")),
+        tool("get_raw_artifact", "Explicit expansion: return the raw artifact by raw artifact id.", mapOf("id" to "string")),
+        tool("get_artifact_slice", "Explicit expansion: return an inclusive raw artifact line slice.", mapOf("id" to "string", "beforeLine" to "number", "afterLine" to "number")),
+        tool("get_related_raw_context", "Explicit expansion: return raw artifact linked to a compressed artifact document id.", mapOf("compressedArtifactId" to "string")),
         tool("delete_document", "Delete a document and its indexed chunks.", mapOf("id" to "string")),
     )
 
@@ -204,6 +237,12 @@ class McpController(
     private fun parseContextLevel(value: String): ContextLevel? {
         val normalized = value.trim().lowercase()
         return ContextLevel.entries.firstOrNull { it.name == normalized }
+    }
+
+    private fun parseArtifactKind(value: String): ArtifactKind {
+        val normalized = value.trim().replace("-", "_").lowercase()
+        return ArtifactKind.entries.firstOrNull { it.name.lowercase() == normalized }
+            ?: error("Unsupported artifact kind '$value'. Available: ${ArtifactKind.entries.joinToString { it.name }}")
     }
 
     private fun stringListArgument(value: Any?): List<String> =

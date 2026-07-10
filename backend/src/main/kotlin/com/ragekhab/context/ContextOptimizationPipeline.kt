@@ -70,6 +70,7 @@ class ContextOptimizationPipeline(
             importantContext = budgeted.important,
             optionalContext = budgeted.optional,
             sources = sources,
+            preview = draft.selected.map { it.toPreviewItem(draft.taskTerms) },
             estimatedTokens = optimizedTokens,
             tokenSavings = savings(candidateTokens, optimizedTokens, draft.maxTokens),
             cacheHit = cacheHit,
@@ -190,6 +191,27 @@ class ContextOptimizationPipeline(
             .take(if (critical) 220 else 180)
             .trimEnd(',', ';', ':', '-')
         return "$source: $compressed"
+    }
+
+    private fun OptimizedCandidate.toPreviewItem(taskTerms: Set<String>): ContextPreviewItem {
+        val overlap = terms.count { it in taskTerms }
+        val reasons = mutableListOf<String>()
+        if (overlap > 0) reasons += "$overlap task term match${if (overlap == 1) "" else "es"}"
+        if (result.score >= 0.7) reasons += "high semantic score"
+        if (result.documentName.normalizedTerms().any { it in taskTerms }) reasons += "source name match"
+        if (result.artifactKind != null) reasons += "compressed ${result.artifactKind.lowercase().replace('_', ' ')}"
+        if (result.rawArtifactId != null) reasons += "raw expansion available"
+        if (reasons.isEmpty()) reasons += "ranked fallback context"
+        return ContextPreviewItem(
+            source = result.documentName,
+            documentId = result.documentId,
+            chunkId = result.chunkId,
+            score = (valueScore * 100.0).roundToInt() / 100.0,
+            estimatedTokens = result.text.estimatedTokens(),
+            reason = reasons.joinToString(" + "),
+            artifactKind = result.artifactKind,
+            compressed = result.rawArtifactId != null || result.artifactKind != null,
+        )
     }
 
     private fun buildSummary(task: String, selected: List<OptimizedCandidate>): String {

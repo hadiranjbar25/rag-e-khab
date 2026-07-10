@@ -73,6 +73,10 @@ data class DebugArtifact(
     val inputType: DebugInputType,
     val sourceName: String,
     val sanitizedText: String,
+    val compactText: String? = null,
+    val rawTokenEstimate: Int? = null,
+    val compressedTokenEstimate: Int? = null,
+    val reductionPercent: Int? = null,
     val warningSummary: List<DebugWarning>,
     val dataRequestId: UUID? = null,
     val createdAt: Instant,
@@ -200,4 +204,11 @@ data class DebugSessionState(
     val dataRequests: List<DebugSafeDataRequest>,
     val timeline: List<DebugAuditEvent>,
     val notes: List<DebugNote>,
+)
+
+data class DebugArtifactSlice(
+    val artifactId: UUID,
+    val startLine: Int,
+    val endLine: Int,
+    val text: String,
 )

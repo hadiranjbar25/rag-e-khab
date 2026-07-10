@@ -104,7 +104,9 @@ type OptimizedContext = {
   summary: string;
   criticalContext: string[];
   importantContext: string[];
+  optionalContext?: string[];
   sources: string[];
+  preview?: ContextPreviewItem[];
   estimatedTokens: number;
   tokenSavings?: {
     originalTokens: number;
@@ -114,6 +116,17 @@ type OptimizedContext = {
     targetTokens: number;
   };
   compression?: string;
+};
+
+type ContextPreviewItem = {
+  source: string;
+  documentId: string;
+  chunkId: string;
+  score: number;
+  estimatedTokens: number;
+  reason: string;
+  artifactKind?: string;
+  compressed: boolean;
 };
 
 type ConversationTurn = {
@@ -272,9 +285,20 @@ type DebugArtifact = {
   inputType: DebugInputType;
   sourceName: string;
   sanitizedText: string;
+  compactText?: string;
+  rawTokenEstimate?: number;
+  compressedTokenEstimate?: number;
+  reductionPercent?: number;
   warningSummary: DebugWarning[];
   dataRequestId?: string;
   createdAt: string;
+};
+
+type DebugArtifactSlice = {
+  artifactId: string;
+  startLine: number;
+  endLine: number;
+  text: string;
 };
 
 type DebugDataRequest = {
@@ -323,11 +347,12 @@ type SanitizeDebugResponse = {
   tokenMappings: DebugTokenMapping[];
 };
 
-type View = 'home' | 'repositories' | 'memories' | 'knowledge' | 'safeDebug' | 'optimizer' | 'settings' | 'chat';
+type View = 'home' | 'workspaces' | 'repositories' | 'memories' | 'knowledge' | 'safeDebug' | 'optimizer' | 'settings' | 'chat';
 type IngestMode = 'upload' | 'text';
 
 const viewRoutes: Record<View, string> = {
   home: '/',
+  workspaces: '/workspaces',
   repositories: '/repositories',
   memories: '/memories',
   knowledge: '/knowledge',
@@ -372,6 +397,8 @@ const safeDebugInstructionFor = (sessionId?: string) => `You are connected to a 
 Current sessionId: ${sessionId || '<select a debug session>'}
 
 Use only sanitized artifacts from the session.
+Artifacts are compacted for agent use by default.
+When compact context is not enough, call get_debug_artifact_slice for a small sanitized line range.
 Do not ask the developer for raw production data.
 Do not ask for names, emails, phone numbers, addresses, or other PII.
 
@@ -484,6 +511,9 @@ export default function App() {
   const [debugDataRequestId, setDebugDataRequestId] = useState('');
   const [debugSanitizedText, setDebugSanitizedText] = useState('');
   const [debugWarnings, setDebugWarnings] = useState<DebugWarning[]>([]);
+  const [debugArtifactSliceStart, setDebugArtifactSliceStart] = useState(1);
+  const [debugArtifactSliceEnd, setDebugArtifactSliceEnd] = useState(80);
+  const [debugArtifactSlice, setDebugArtifactSlice] = useState<DebugArtifactSlice | null>(null);
   const [debugTokenQuery, setDebugTokenQuery] = useState('');
   const [debugResolvedToken, setDebugResolvedToken] = useState<DebugTokenMapping | null>(null);
   const [debugTokenSearch, setDebugTokenSearch] = useState('');
@@ -509,6 +539,7 @@ export default function App() {
   const [settingsDraft, setSettingsDraft] = useState<RuntimeSettings | null>(null);
   const [question, setQuestion] = useState('');
   const [task, setTask] = useState('');
+  const [optimizerTokenBudget, setOptimizerTokenBudget] = useState(3000);
   const [optimizedContext, setOptimizedContext] = useState<OptimizedContext | null>(null);
   const [history, setHistory] = useState<ConversationTurn[]>([]);
   const [activeSource, setActiveSource] = useState<SearchResult | null>(null);
@@ -604,6 +635,12 @@ export default function App() {
       .catch((err) => reportError(err, 'Debug session load failed'));
   }, [activeDebugSessionId]);
 
+  useEffect(() => {
+    if (settingsDraft?.optimizer.maxTokens) {
+      setOptimizerTokenBudget(settingsDraft.optimizer.maxTokens);
+    }
+  }, [settingsDraft?.optimizer.maxTokens]);
+
   const totalChunks = documents.reduce((sum, doc) => sum + doc.chunkCount, 0);
   const tokenSavings = optimizedContext ? (optimizedContext.tokenSavings?.savedTokens ?? Math.max(0, totalChunks * 650 - optimizedContext.estimatedTokens)) : 0;
   const lastSync = repositoryStatus?.lastIndexedAt ?? repositoryStatus?.repositories.find((repo) => repo.lastIndexedAt)?.lastIndexedAt;
@@ -632,6 +669,7 @@ export default function App() {
 
   const navItems = [
     { id: 'home' as const, label: 'Dashboard', icon: Home },
+    { id: 'workspaces' as const, label: 'Workspaces', icon: Layers },
     { id: 'repositories' as const, label: 'Repositories', icon: Network },
     { id: 'memories' as const, label: 'Memories', icon: Brain },
     { id: 'knowledge' as const, label: 'Sources', icon: BookOpen },
@@ -648,6 +686,7 @@ export default function App() {
 
   const pageCopy: Record<View, string> = {
     home: 'Health, activity, and context value for this workspace.',
+    workspaces: 'Create, select, and manage workspace boundaries.',
     repositories: 'Codebases linked to the active workspace.',
     memories: 'Decisions, conventions, fixes, and patterns for this workspace.',
     knowledge: 'Documents and notes available to coding agents.',
@@ -659,6 +698,7 @@ export default function App() {
 
   const pageTitles: Record<View, string> = {
     home: selectedProject ? selectedProject.name : 'General',
+    workspaces: 'Workspaces',
     repositories: 'Repositories',
     memories: 'Memories',
     knowledge: 'Sources',
@@ -815,7 +855,11 @@ export default function App() {
       const response = await request<OptimizedContext>('/api/context/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ task: prompt, projectId: selectedProjectId || undefined, targetTokens: 2000 })
+        body: JSON.stringify({
+          task: prompt,
+          projectId: selectedProjectId || undefined,
+          maxTokens: Math.max(300, Math.min(8000, Math.floor(optimizerTokenBudget || settingsDraft?.optimizer.maxTokens || 3000)))
+        })
       });
       setOptimizedContext(response);
       showToast({ type: 'success', title: 'Context optimized', message: `${response.estimatedTokens.toLocaleString()} estimated tokens` });
@@ -1075,6 +1119,7 @@ export default function App() {
     setDebugSanitizedText('');
     setDebugWarnings([]);
     setDebugResolvedToken(null);
+    setDebugArtifactSlice(null);
   };
 
   const archiveDebugSession = async (id: string) => {
@@ -1113,8 +1158,9 @@ export default function App() {
       });
       setDebugRawText('');
       setDebugDataRequestId('');
-      setDebugSanitizedText(response.sanitizedText);
+      setDebugSanitizedText(response.artifact.compactText || response.sanitizedText);
       setDebugWarnings(response.warnings);
+      setDebugArtifactSlice(null);
       setDebugDetail(await request<DebugSessionDetail>(`/api/debug-sessions/${activeDebugSessionId}`));
       await refresh();
       showToast({ type: 'success', title: 'Data sanitized', message: `${response.tokenMappings.length} token mapping(s)` });
@@ -1223,6 +1269,25 @@ export default function App() {
     }
   };
 
+  const expandDebugArtifactSlice = async (artifactId: string) => {
+    if (!activeDebugSessionId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const start = Math.max(1, Math.floor(debugArtifactSliceStart || 1));
+      const end = Math.max(start, Math.floor(debugArtifactSliceEnd || start));
+      const slice = await request<DebugArtifactSlice>(
+        `/api/debug-sessions/${activeDebugSessionId}/artifacts/${artifactId}/slice?beforeLine=${start}&afterLine=${end}`
+      );
+      setDebugArtifactSlice(slice);
+      showToast({ type: 'success', title: 'Slice expanded', message: `Lines ${slice.startLine}-${slice.endLine}` });
+    } catch (err) {
+      reportError(err, 'Slice expansion failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const filteredDebugMappings = (debugDetail?.tokenMappings ?? []).filter((mapping) => {
     const query = debugTokenSearch.trim().toLowerCase();
     if (!query) return true;
@@ -1231,9 +1296,14 @@ export default function App() {
   });
 
   const pendingDebugRequests = (debugDetail?.dataRequests ?? []).filter((item) => item.status === 'pending');
+  const latestDebugArtifact = debugDetail?.artifacts[0];
+  const latestDebugText = debugSanitizedText || latestDebugArtifact?.compactText || latestDebugArtifact?.sanitizedText || '';
 
   const tokenMappingFor = (token?: string): DebugTokenMapping | undefined =>
     token ? debugDetail?.tokenMappings.find((mapping) => mapping.token.toLowerCase() === token.toLowerCase()) : undefined;
+
+  const artifactTextFor = (artifact: DebugArtifact): string =>
+    artifact.compactText || artifact.sanitizedText;
 
   const suggestedSqlFor = (item: DebugDataRequest): string => {
     const mapping = tokenMappingFor(item.parentToken);
@@ -1283,14 +1353,36 @@ export default function App() {
             </ActionIcon>
           </Group>
 
-          <Select
-            label="Workspace"
-            value={selectedProjectId}
-            onChange={(value) => setSelectedProjectId(value ?? '')}
-            data={projects.map((project) => ({ value: project.id, label: project.name }))}
-            searchable
-            nothingFoundMessage="No workspaces"
-          />
+          <Paper
+            component={Stack}
+            gap="xs"
+            p="sm"
+            radius="sm"
+            withBorder
+            bg={colorScheme === 'dark' ? 'teal.9' : 'teal.0'}
+            c={colorScheme === 'dark' ? 'white' : 'teal.9'}
+            style={{ borderColor: colorScheme === 'dark' ? 'var(--mantine-color-teal-5)' : 'var(--mantine-color-teal-3)' }}
+          >
+            <Group gap="xs" wrap="nowrap">
+              <ThemeIcon color="teal" variant={colorScheme === 'dark' ? 'filled' : 'light'} size="sm" radius="sm">
+                <Layers size={14} />
+              </ThemeIcon>
+              <Box flex={1} miw={0}>
+                <Text size="xs" fw={700} tt="uppercase" c={colorScheme === 'dark' ? 'teal.1' : 'teal.8'}>Active workspace</Text>
+                <Text fw={700} truncate>{selectedProject?.name ?? 'General'}</Text>
+              </Box>
+            </Group>
+            <Select
+              label="Switch workspace"
+              value={selectedProjectId}
+              onChange={(value) => setSelectedProjectId(value ?? '')}
+              data={projects.map((project) => ({ value: project.id, label: project.name }))}
+              searchable
+              variant={colorScheme === 'dark' ? 'default' : 'filled'}
+              leftSection={<Layers size={16} />}
+              nothingFoundMessage="No workspaces"
+            />
+          </Paper>
 
           <Badge
             color={status?.index.vectorStore === 'qdrant' ? 'teal' : 'gray'}
@@ -1368,7 +1460,7 @@ export default function App() {
                   </Box>
                   <Box>
                     <Text size="xs" fw={700} tt="uppercase" c="dimmed">Optimizer</Text>
-                    <Text fw={700}>{settingsDraft?.optimizer.mode ?? 'retrieval'} · {settingsDraft?.optimizer.maxTokens ?? 3000} tokens</Text>
+                    <Text fw={700}>{settingsDraft?.optimizer.mode ?? 'retrieval'} · {settingsDraft?.optimizer.maxTokens ?? 3000} default tokens</Text>
                   </Box>
                 </SimpleGrid>
               </Paper>
@@ -1583,36 +1675,60 @@ export default function App() {
               />
             </Paper>
 
+          </Stack>
+        )}
+
+        {view === 'workspaces' && (
+          <Stack component="section" gap="md">
             <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
               <Group justify="space-between" align="end">
-                <Title order={2} size="h4">Workspaces</Title>
+                <Stack gap={2}>
+                  <Title order={2} size="h4">Workspaces</Title>
+                  <Text size="sm" c="dimmed">Use workspaces to separate memories, sources, repositories, and debug context.</Text>
+                </Stack>
                 <Group gap="sm" grow>
                   <TextInput value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="New workspace" />
                   <Button onClick={createProject} disabled={busy || !projectName.trim()} title="Create workspace" leftSection={<FolderPlus size={18} />}>Create</Button>
                 </Group>
               </Group>
               <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
-                {projects.map((project) => (
-                  <Paper component={Stack} gap="md" key={project.id} p="md" radius="sm" withBorder bg={project.id === selectedProjectId ? 'teal.0' : undefined}>
-                    <Stack gap={2}>
-                      <Text fw={700}>{project.name}</Text>
-                      <Group gap="xs">
-                        <Text fw={700}>{project.documentCount}</Text>
-                        <Text size="sm" c="dimmed">created {new Date(project.createdAt).toLocaleDateString()}</Text>
+                {projects.map((project) => {
+                  const selected = project.id === selectedProjectId;
+                  return (
+                    <Paper
+                      component={Stack}
+                      gap="md"
+                      key={project.id}
+                      p="md"
+                      radius="sm"
+                      withBorder
+                      bg={selected ? (colorScheme === 'dark' ? 'teal.8' : 'teal.0') : undefined}
+                      c={selected && colorScheme === 'dark' ? 'white' : undefined}
+                      style={selected ? { borderColor: colorScheme === 'dark' ? 'var(--mantine-color-teal-4)' : 'var(--mantine-color-teal-5)' } : undefined}
+                    >
+                      <Group justify="space-between" align="flex-start" gap="sm">
+                        <Stack gap={2} miw={0}>
+                          <Text fw={700}>{project.name}</Text>
+                          <Group gap="xs">
+                            <Text fw={700}>{project.documentCount}</Text>
+                            <Text size="sm" c={selected && colorScheme === 'dark' ? 'teal.1' : 'dimmed'}>created {new Date(project.createdAt).toLocaleDateString()}</Text>
+                          </Group>
+                        </Stack>
+                        {selected && <Badge color="teal" variant={colorScheme === 'dark' ? 'filled' : 'light'}>Selected</Badge>}
                       </Group>
-	                  </Stack>
-                    <Group gap="sm">
-	                    <Button variant="subtle" color="gray" onClick={() => setSelectedProjectId(project.id)} disabled={busy}>
-	                      Select
-	                    </Button>
-	                    {project.name !== 'General' && (
-	                      <ActionIcon variant="light" color="red" onClick={() => deleteProject(project)} disabled={busy} title="Delete workspace">
-	                        <Trash2 size={18} />
-	                      </ActionIcon>
-	                    )}
-	                  </Group>
-                  </Paper>
-                ))}
+                      <Group gap="sm">
+                        <Button variant={selected ? 'filled' : 'subtle'} color={selected ? 'teal' : 'gray'} onClick={() => setSelectedProjectId(project.id)} disabled={busy || selected}>
+                          {selected ? 'Active' : 'Select'}
+                        </Button>
+                        {project.name !== 'General' && (
+                          <ActionIcon variant="light" color="red" onClick={() => deleteProject(project)} disabled={busy} title="Delete workspace">
+                            <Trash2 size={18} />
+                          </ActionIcon>
+                        )}
+                      </Group>
+                    </Paper>
+                  );
+                })}
               </SimpleGrid>
             </Paper>
           </Stack>
@@ -1957,14 +2073,20 @@ export default function App() {
 
                         <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
                           <Group justify="space-between" align="center">
-                            <Title order={2} size="h4">Sanitized output</Title>
+                            <Stack gap={2}>
+                              <Title order={2} size="h4">Compact agent output</Title>
+                              <Text size="xs" c="dimmed">Sanitized first, then compacted for agent context.</Text>
+                            </Stack>
                             <Group gap="sm">
-                              <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText} title="Copy sanitized output"><Clipboard size={17} /></ActionIcon>
-                              <Button variant="subtle" color="gray" onClick={() => copyDebugText(debugSanitizedText, debugDetail.artifacts[0]?.id)} disabled={!debugSanitizedText}>Save artifact</Button>
+                              {latestDebugArtifact?.reductionPercent !== undefined && (
+                                <Badge color="teal" variant="light">{latestDebugArtifact.reductionPercent}% smaller</Badge>
+                              )}
+                              <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(latestDebugText, latestDebugArtifact?.id)} disabled={!latestDebugText} title="Copy compact output"><Clipboard size={17} /></ActionIcon>
+                              <Button variant="subtle" color="gray" onClick={() => copyDebugText(latestDebugText, latestDebugArtifact?.id)} disabled={!latestDebugText}>Copy compact</Button>
                             </Group>
                           </Group>
                           <Paper component="pre" p="sm" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
-                            {debugSanitizedText || 'Sanitized data will appear here.'}
+                            {latestDebugText || 'Compacted sanitized data will appear here.'}
                           </Paper>
                         </Paper>
                       </SimpleGrid>
@@ -2063,22 +2185,64 @@ export default function App() {
                       <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
                         <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
                           <Group justify="space-between" align="center">
-                            <Title order={2} size="h4">Shared artifacts</Title>
+                            <Stack gap={2}>
+                              <Title order={2} size="h4">Shared artifacts</Title>
+                              <Text size="xs" c="dimmed">Agents see compact text by default. Expand only the sanitized raw lines you need.</Text>
+                            </Stack>
                             <Badge color="gray" variant="light">{debugDetail.artifacts.length}</Badge>
+                          </Group>
+                          <Group align="end" gap="sm">
+                            <NumberInput
+                              label="Start line"
+                              min={1}
+                              value={debugArtifactSliceStart}
+                              onChange={(value) => setDebugArtifactSliceStart(Number(value) || 1)}
+                            />
+                            <NumberInput
+                              label="End line"
+                              min={1}
+                              value={debugArtifactSliceEnd}
+                              onChange={(value) => setDebugArtifactSliceEnd(Number(value) || 1)}
+                            />
                           </Group>
                           <Stack gap="sm">
                             {debugDetail.artifacts.map((artifact) => (
-                              <Paper component={Group} justify="space-between" align="flex-start" gap="sm" key={artifact.id} p="sm" radius="sm" withBorder>
-                                <Stack gap={2} miw={0}>
-                                  <Text fw={700}>{artifact.inputType.toUpperCase()} · {artifact.sourceName}</Text>
-                                  <Text size="xs" c="dimmed">{new Date(artifact.createdAt).toLocaleString()}</Text>
-                                  <Text size="xs" c="dimmed">{artifact.warningSummary.length} warning group(s)</Text>
-                                </Stack>
-                                <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(artifact.sanitizedText, artifact.id)} title="Copy artifact"><Copy size={17} /></ActionIcon>
+                              <Paper component={Stack} gap="sm" key={artifact.id} p="sm" radius="sm" withBorder>
+                                <Group justify="space-between" align="flex-start" gap="sm">
+                                  <Stack gap={2} miw={0}>
+                                    <Text fw={700}>{artifact.inputType.toUpperCase()} · {artifact.sourceName}</Text>
+                                    <Text size="xs" c="dimmed">{new Date(artifact.createdAt).toLocaleString()}</Text>
+                                    <Text size="xs" c="dimmed">{artifact.warningSummary.length} warning group(s)</Text>
+                                  </Stack>
+                                  <Group gap="xs">
+                                    {artifact.reductionPercent !== undefined && <Badge color="teal" variant="light">{artifact.reductionPercent}% smaller</Badge>}
+                                    <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(artifactTextFor(artifact), artifact.id)} title="Copy compact artifact"><Copy size={17} /></ActionIcon>
+                                  </Group>
+                                </Group>
+                                {(artifact.rawTokenEstimate !== undefined || artifact.compressedTokenEstimate !== undefined) && (
+                                  <Text size="xs" c="dimmed">
+                                    {artifact.rawTokenEstimate?.toLocaleString() ?? '-'} raw tokens - {artifact.compressedTokenEstimate?.toLocaleString() ?? '-'} compact tokens
+                                  </Text>
+                                )}
+                                <Group gap="sm">
+                                  <Button variant="subtle" color="gray" onClick={() => copyDebugText(artifactTextFor(artifact), artifact.id)} leftSection={<Copy size={16} />}>Copy compact</Button>
+                                  <Button variant="light" color="gray" onClick={() => expandDebugArtifactSlice(artifact.id)} disabled={busy} leftSection={<FileText size={16} />}>Expand slice</Button>
+                                </Group>
                               </Paper>
                             ))}
                             {debugDetail.artifacts.length === 0 && <Text c="dimmed">No sanitized artifacts saved yet.</Text>}
                           </Stack>
+                          {debugArtifactSlice && (
+                            <Paper component={Stack} gap="sm" p="sm" radius="sm" withBorder>
+                              <Group justify="space-between" align="center">
+                                <Text fw={700}>Sanitized raw slice · lines {debugArtifactSlice.startLine}-{debugArtifactSlice.endLine}</Text>
+                                <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(debugArtifactSlice.text, debugArtifactSlice.artifactId)} title="Copy slice"><Copy size={17} /></ActionIcon>
+                              </Group>
+                              <Paper component="pre" p="sm" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
+                                {debugArtifactSlice.text}
+                              </Paper>
+                            </Paper>
+                          )}
                         </Paper>
 
                         <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
@@ -2123,14 +2287,24 @@ export default function App() {
                 <Sparkles size={18} />
               </Group>
 	              <Textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Add pagination to Orders API" minRows={7} autosize />
-	              <Button onClick={optimizeContext} disabled={busy || !task.trim()} leftSection={<Sparkles size={18} />}>Optimize context</Button>
+              <Group align="end" gap="sm">
+                <NumberInput
+                  label="Token budget"
+                  min={300}
+                  max={8000}
+                  step={500}
+                  value={optimizerTokenBudget}
+                  onChange={(value) => setOptimizerTokenBudget(Number(value) || 300)}
+                />
+                <Button onClick={optimizeContext} disabled={busy || !task.trim()} leftSection={<Sparkles size={18} />}>Optimize context</Button>
+              </Group>
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                 <Box>
                   <Text size="xs" fw={700} tt="uppercase" c="dimmed">Mode</Text>
                   <Text fw={700}>{settingsDraft?.optimizer.mode ?? 'retrieval'}</Text>
                 </Box>
                 <Box>
-                  <Text size="xs" fw={700} tt="uppercase" c="dimmed">Budget</Text>
+                  <Text size="xs" fw={700} tt="uppercase" c="dimmed">Default budget</Text>
                   <Text fw={700}>{settingsDraft?.optimizer.maxTokens ?? 3000} tokens</Text>
                 </Box>
               </SimpleGrid>
@@ -2170,6 +2344,34 @@ export default function App() {
                   <Group gap="xs">
                     {optimizedContext.sources.map((source) => <Badge key={source} color="gray" variant="light">{source}</Badge>)}
                   </Group>
+                  {(optimizedContext.preview?.length ?? 0) > 0 && (
+                    <Stack gap="sm">
+                      <Group justify="space-between" align="center">
+                        <Title order={3} size="h5">Context preview</Title>
+                        <Badge color="teal" variant="light">{optimizedContext.preview?.length} selected</Badge>
+                      </Group>
+                      <Stack gap="xs">
+                        {optimizedContext.preview?.map((item) => (
+                          <Paper component={Stack} gap="xs" key={`${item.documentId}-${item.chunkId}`} p="sm" radius="sm" withBorder>
+                            <Group justify="space-between" align="flex-start" gap="sm">
+                              <Stack gap={2} miw={0}>
+                                <Text fw={700} truncate>{item.source}</Text>
+                                <Text size="sm" c="dimmed">{item.reason}</Text>
+                              </Stack>
+                              <Group gap="xs">
+                                {item.compressed && <Badge color="teal" variant="light">Compressed</Badge>}
+                                {item.artifactKind && <Badge color="gray" variant="outline">{item.artifactKind.toLowerCase().replaceAll('_', ' ')}</Badge>}
+                              </Group>
+                            </Group>
+                            <Group gap="xs">
+                              <Badge color="gray" variant="light">{item.estimatedTokens.toLocaleString()} tokens</Badge>
+                              <Badge color="gray" variant="light">score {item.score.toFixed(2)}</Badge>
+                            </Group>
+                          </Paper>
+                        ))}
+                      </Stack>
+                    </Stack>
+                  )}
                   {optimizedContext.importantContext.length > 0 && (
                     <Stack gap="sm">
                       <Title order={3} size="h5">Supporting context</Title>

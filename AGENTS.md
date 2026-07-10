@@ -46,7 +46,8 @@ Before coding, use:
 For debugging with production-like data:
 - Use Safe Debug Sessions only.
 - Never ask for raw production data or PII.
-- Use get_debug_session_state to inspect sanitized artifacts and request status.
+- Use get_debug_session_state to inspect compact sanitized artifacts and request status.
+- Use get_debug_artifact_slice only when compact debug context is not enough, and request the smallest useful sanitized line range.
 - When more data is needed, call create_debug_data_request with entity, relation, parentToken, reason, and requestedFields.
 - Do not ask for names, emails, phone numbers, addresses, raw notes, raw SQL output, or raw database rows.
 - Never store token maps, real IDs, emails, phone numbers, addresses, or SQL with real IDs in memory.
@@ -70,10 +71,11 @@ Debugging task:
 ```text
 1. list_debug_sessions
 2. get_debug_session_state
-3. inspect sanitized artifacts
-4. create_debug_data_request if more data is needed
-5. wait for developer to sanitize and link a new artifact
-6. propose a sanitized lesson for Memory
+3. inspect compact sanitized artifacts
+4. call get_debug_artifact_slice only for small sanitized line ranges when needed
+5. create_debug_data_request if more data is needed
+6. wait for developer to sanitize and link a new artifact
+7. propose a sanitized lesson for Memory
 ```
 
 ## Important Safety Model
@@ -81,6 +83,8 @@ Debugging task:
 - Safe Debug Session is the temporary sensitive investigation workspace.
 - Memory is the durable sanitized project knowledge store.
 - The agent should not ask for raw production data.
+- The agent should consume compact debug artifacts by default.
+- The agent should expand only small sanitized raw slices when needed.
 - The agent should not move debug data into memory directly.
 - Durable memory should contain only general, reusable, non-sensitive lessons approved by the developer.
 

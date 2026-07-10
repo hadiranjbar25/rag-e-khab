@@ -3,6 +3,7 @@ package com.ragekhab.api
 import com.ragekhab.debug.CreateDebugSessionRequest
 import com.ragekhab.debug.CreateDebugDataRequest
 import com.ragekhab.debug.DebugArtifact
+import com.ragekhab.debug.DebugArtifactSlice
 import com.ragekhab.debug.DebugDataRequest
 import com.ragekhab.debug.DebugDataRequestCreated
 import com.ragekhab.debug.DebugSession
@@ -85,6 +86,15 @@ class DebugSessionController(
         debugSessions.auditExport(sessionId, request?.artifactId)
         return mapOf("recorded" to true)
     }
+
+    @GetMapping("/{sessionId}/artifacts/{artifactId}/slice")
+    fun artifactSlice(
+        @PathVariable sessionId: UUID,
+        @PathVariable artifactId: UUID,
+        @RequestParam beforeLine: Int,
+        @RequestParam afterLine: Int,
+    ): DebugArtifactSlice =
+        debugSessions.artifactSlice(sessionId, artifactId, beforeLine, afterLine)
 }
 
 data class DebugExportRequest(val artifactId: UUID? = null)

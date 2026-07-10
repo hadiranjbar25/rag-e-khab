@@ -1,6 +1,8 @@
 package com.ragekhab.debug
 
 import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.springframework.beans.factory.annotation.Autowired
@@ -78,5 +80,39 @@ class DebugSessionServiceTest {
         assertFalse(response.sanitizedText.contains("jane@example.com"))
         assertFalse(response.sanitizedText.contains("Jane Doe"))
         assertFalse(response.sanitizedText.contains("sk_test_1234567890abcdef"))
+    }
+
+    @Test
+    fun `debug session compacts sanitized logs for agent context and keeps sanitized raw slices`() {
+        val session = service.create("compact logs")
+        val raw = buildString {
+            repeat(40) { appendLine("2026-07-10T10:15:00Z INFO health check ok user jane@example.com") }
+            appendLine("2026-07-10T10:16:00Z ERROR Failed payment for user jane@example.com orderId=ORDER_123")
+            appendLine("java.lang.IllegalStateException: payment stuck")
+            appendLine("    at com.acme.PaymentService.capture(PaymentService.java:77)")
+            appendLine("2026-07-10T10:17:00Z INFO health check ok")
+        }
+
+        val response = service.sanitize(
+            session.id,
+            SanitizeDebugRequest(
+                inputType = DebugInputType.log,
+                sourceName = "backend.log",
+                rawText = raw,
+            ),
+        )
+        val mcpContext = service.contextForMcp(session.id)
+        val compactArtifact = mcpContext.artifacts.first { it.id == response.artifact.id }
+        val slice = service.artifactSlice(session.id, response.artifact.id, beforeLine = 41, afterLine = 43)
+
+        assertFalse(response.artifact.sanitizedText.contains("jane@example.com"))
+        assertContains(response.artifact.sanitizedText, "EMAIL_001")
+        assertContains(compactArtifact.sanitizedText, "Failed payment")
+        assertContains(compactArtifact.sanitizedText, "PaymentService.java:77")
+        assertTrue(compactArtifact.sanitizedText.length < response.artifact.sanitizedText.length)
+        assertEquals(response.artifact.compactText, compactArtifact.sanitizedText)
+        assertContains(slice.text, "EMAIL_001")
+        assertContains(slice.text, "IllegalStateException")
+        assertFalse(slice.text.contains("jane@example.com"))
     }
 }

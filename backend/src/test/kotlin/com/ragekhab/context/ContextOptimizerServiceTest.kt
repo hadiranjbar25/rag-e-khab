@@ -3,14 +3,22 @@ package com.ragekhab.context
 import com.ragekhab.config.RagEKhabProperties
 import com.ragekhab.config.RuntimeSettingsService
 import com.ragekhab.llm.LangChain4jChatClient
+import com.ragekhab.document.DocumentChunk
+import com.ragekhab.document.DocumentRepository
+import com.ragekhab.project.ProjectRepository
+import com.ragekhab.project.ProjectService
 import com.ragekhab.search.SearchResult
+import com.ragekhab.search.SemanticSearchService
+import com.ragekhab.search.VectorIndex
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.ragekhab.testStateStore
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ContextOptimizerServiceTest {
     @Test
@@ -78,6 +86,38 @@ class ContextOptimizerServiceTest {
         assertNull(result)
     }
 
+    @Test
+    fun `retrieval optimizer includes context preview with reasons and token estimates`() {
+        val state = testStateStore()
+        val documentRepository = DocumentRepository(state)
+        val pipeline = ContextOptimizationPipeline(
+            searchService = SemanticSearchService(
+                repository = documentRepository,
+                properties = RagEKhabProperties(),
+                vectorIndex = FakeVectorIndex(
+                    listOf(
+                        searchResult().copy(
+                            documentName = "SupplierService.kt",
+                            score = 0.92,
+                            text = "SupplierService validates supplier tax ID before saving supplier onboarding requests.",
+                        ),
+                    ),
+                ),
+            ),
+            projectService = ProjectService(ProjectRepository(state), documentRepository),
+            properties = RagEKhabProperties(),
+            settingsService = RuntimeSettingsService(RagEKhabProperties(), state),
+        )
+
+        val result = RetrievalOnlyContextOptimizer(pipeline).optimize(
+            ContextOptimizationRequest(task = "Add supplier tax ID validation", maxTokens = 1_200),
+        )
+
+        assertEquals("SupplierService.kt", result.preview.single().source)
+        assertTrue(result.preview.single().reason.contains("task term"))
+        assertTrue(result.preview.single().estimatedTokens > 0)
+    }
+
     private class FakeModeOptimizer(
         override val mode: ContextOptimizerMode,
         private val compressionLabel: String,
@@ -111,5 +151,13 @@ class ContextOptimizerServiceTest {
             tokenSavings = TokenSavingsReport(100, 10, 90, 90.0, 3_000),
             compression = compression,
         )
+    }
+
+    private class FakeVectorIndex(private val results: List<SearchResult>) : VectorIndex {
+        override fun upsert(chunks: List<DocumentChunk>) = Unit
+        override fun search(query: String, limit: Int, projectId: UUID?): List<SearchResult> = results.take(limit)
+        override fun deleteDocument(documentId: UUID) = Unit
+        override fun reindex(chunks: List<DocumentChunk>) = Unit
+        override fun status(): String = "fake"
     }
 }

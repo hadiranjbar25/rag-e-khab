@@ -9,6 +9,17 @@ enum class DocumentFormat {
     TEXT,
 }
 
+enum class ArtifactKind {
+    TEST_OUTPUT,
+    STACK_TRACE,
+    GIT_DIFF,
+    GIT_STATUS,
+    LOG,
+    DIRECTORY_TREE,
+    QUERY_RESULT,
+    TEXT,
+}
+
 data class KnowledgeDocument(
     val id: UUID,
     val projectId: UUID,
@@ -19,6 +30,11 @@ data class KnowledgeDocument(
     val sizeBytes: Long,
     val createdAt: Instant,
     val chunkCount: Int,
+    val rawArtifactId: UUID? = null,
+    val artifactKind: ArtifactKind? = null,
+    val rawTokenEstimate: Int? = null,
+    val compressedTokenEstimate: Int? = null,
+    val reductionPercent: Int? = null,
 )
 
 data class DocumentChunk(
@@ -29,6 +45,11 @@ data class DocumentChunk(
     val documentName: String,
     val pageNumber: Int?,
     val text: String,
+    val rawArtifactId: UUID? = null,
+    val artifactKind: ArtifactKind? = null,
+    val rawTokenEstimate: Int? = null,
+    val compressedTokenEstimate: Int? = null,
+    val reductionPercent: Int? = null,
 )
 
 data class DocumentDetail(
@@ -39,5 +60,12 @@ data class DocumentDetail(
 data class TextIngestionRequest(
     val title: String,
     val text: String,
+    val projectId: String? = null,
+)
+
+data class ArtifactIngestionRequest(
+    val title: String,
+    val content: String,
+    val kind: ArtifactKind = ArtifactKind.TEXT,
     val projectId: String? = null,
 )

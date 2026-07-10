@@ -18,9 +18,11 @@ RAG-e Khab is designed for Codex, Claude Code, Cursor, Gemini CLI, and other MCP
 - **Project memory**: store architecture decisions, conventions, bug fixes, patterns, domain knowledge, and technical debt.
 - **Repository agent**: sync compact repository maps, module summaries, selected docs, build config, and source declarations.
 - **Context optimizer**: retrieve and trim task-specific context within a token budget.
+- **Context preview**: show selected sources, token estimates, and selection reasons before using optimized context.
 - **Context packages**: return class summaries, dependency chains, related tests, snippets, and selection reasons.
-- **Safe Debug Sessions**: sanitize CSV, JSON, and logs before sharing production-like data with agents.
-- **MCP tools**: expose memory, search, context, repository, and Safe Debug workflows to coding agents.
+- **Safe Debug Sessions**: sanitize CSV, JSON, and logs, then compact noisy artifacts before sharing them with agents.
+- **Artifact compression**: store raw developer artifacts locally while indexing compact summaries for retrieval.
+- **MCP tools**: expose memory, search, context, repository, artifact expansion, and Safe Debug workflows to coding agents.
 
 ## Architecture
 
@@ -191,9 +193,13 @@ Important tools:
 | `remember` | Store a structured long-term memory. |
 | `list_memories` | List durable memories. |
 | `list_debug_sessions` | List Safe Debug Sessions. |
-| `get_debug_session_state` | Inspect sanitized debug artifacts and request state. |
+| `get_debug_session_state` | Inspect compact sanitized debug artifacts and request state. |
+| `get_debug_artifact_slice` | Expand a small sanitized raw line range from a debug artifact. |
 | `create_debug_data_request` | Ask the developer for more sanitized follow-up data. |
 | `record_agent_request` | Record a free-form Safe Debug follow-up request. |
+| `add_artifact` | Store a raw developer artifact and index a compressed representation. |
+| `get_raw_artifact` | Explicitly expand a raw artifact by id. |
+| `get_artifact_slice` | Explicitly expand a raw artifact line slice. |
 
 Agents should not request raw production data, token maps, emails, phone numbers, addresses, raw SQL output, or raw database rows.
 
@@ -201,7 +207,11 @@ Agents should not request raw production data, token maps, emails, phone numbers
 
 Safe Debug Sessions are temporary workspaces for production-like investigations.
 
-The developer can paste CSV, JSON, or logs locally. RAG-e Khab sanitizes the data and stores only the sanitized artifact for agent use. Real values remain local and are resolved privately in the UI.
+The developer can paste CSV, JSON, or logs locally. RAG-e Khab sanitizes the data, stores the full sanitized artifact, and compacts the agent-facing version. Real values remain local and are resolved privately in the UI.
+
+For large pasted logs, agents receive compact context by default. The compactor keeps failures, exception classes, stack frames, file paths, method/class names, sanitized IDs, and relevant rows. It removes or summarizes repeated success lines, timestamps, duplicated logs, progress noise, and bulky low-signal output.
+
+When compact debug context is not enough, agents can request a small sanitized raw line range with `get_debug_artifact_slice`. This expands sanitized data only, not original production values.
 
 Sanitizer modes:
 
@@ -214,10 +224,11 @@ Typical workflow:
 1. Create a Safe Debug Session.
 2. Paste query output as CSV, JSON, or logs.
 3. Sanitize it.
-4. Share the sanitized artifact with the coding agent.
+4. Share the compact sanitized artifact with the coding agent.
 5. The agent requests more data with `create_debug_data_request`.
-6. The developer runs private follow-up queries and links a new sanitized artifact.
-7. Reusable sanitized lessons can be promoted to Memory.
+6. The agent requests small sanitized raw slices with `get_debug_artifact_slice` only when compact context is insufficient.
+7. The developer runs private follow-up queries and links a new sanitized artifact.
+8. Reusable sanitized lessons can be promoted to Memory.
 
 ## Configuration
 
@@ -237,6 +248,10 @@ POSTGRES_PORT=5433
 ```
 
 Runtime settings for chat, embeddings, optimizer mode, and local LLM compression are also available in the Settings UI.
+
+The optimizer token budget can be changed globally in Settings or overridden per run on the Context Optimizer page. API and MCP callers can pass `maxTokens` for a request-specific budget.
+
+Optimizer responses include a context preview with selected sources, selection reasons, relevance score, estimated tokens, and whether the source is compressed artifact context. The UI shows this preview so developers can inspect what an agent would receive before relying on it.
 
 ## Project Structure
 
