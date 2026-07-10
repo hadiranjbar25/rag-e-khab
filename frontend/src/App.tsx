@@ -379,6 +379,44 @@ const memoryLabels: Record<string, string> = {
   TechnicalDebt: 'Debt'
 };
 
+const taskTemplates = [
+  {
+    value: 'bug-fix',
+    label: 'Bug fix',
+    description: 'Find failure context, likely owner code, related tests, and prior bug lessons.',
+    task: 'Fix a bug. Include the failing behavior, likely affected module, relevant tests, previous bug-fix memories, and the smallest code context needed to make the change safely.',
+    maxTokens: 3000,
+  },
+  {
+    value: 'add-endpoint',
+    label: 'Add endpoint',
+    description: 'Pull controller, service, DTO, validation, API conventions, and tests.',
+    task: 'Add a new API endpoint. Include controller conventions, service flow, DTO/entity naming patterns, validation rules, error handling style, and related endpoint tests.',
+    maxTokens: 4500,
+  },
+  {
+    value: 'ui-change',
+    label: 'UI change',
+    description: 'Focus on frontend components, design-system usage, routes, and state.',
+    task: 'Implement a UI change. Include relevant React components, Mantine design-system patterns, route/state handling, accessibility concerns, and nearby UI tests or build constraints.',
+    maxTokens: 3000,
+  },
+  {
+    value: 'refactor',
+    label: 'Refactor',
+    description: 'Prioritize dependencies, contracts, callers, tests, and behavior risks.',
+    task: 'Refactor existing code without changing behavior. Include dependency chains, public contracts, callers, related tests, conventions, and known risks.',
+    maxTokens: 6000,
+  },
+  {
+    value: 'safe-debug',
+    label: 'Safe Debug',
+    description: 'Use sanitized artifacts, compact logs, token mappings, and data requests.',
+    task: 'Debug a production-like issue using Safe Debug only. Include compact sanitized artifacts, exception and failed-request clues, tokenized identifiers, related memories, and any small sanitized slices needed.',
+    maxTokens: 4500,
+  },
+];
+
 const memoryBadgeColor = (type: string) => {
   if (type === 'BugFix') return 'red';
   if (type === 'CodingConvention') return 'blue';
@@ -539,6 +577,7 @@ export default function App() {
   const [settingsDraft, setSettingsDraft] = useState<RuntimeSettings | null>(null);
   const [question, setQuestion] = useState('');
   const [task, setTask] = useState('');
+  const [selectedTaskTemplate, setSelectedTaskTemplate] = useState('');
   const [optimizerTokenBudget, setOptimizerTokenBudget] = useState(3000);
   const [optimizedContext, setOptimizedContext] = useState<OptimizedContext | null>(null);
   const [history, setHistory] = useState<ConversationTurn[]>([]);
@@ -844,6 +883,14 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const applyTaskTemplate = (value: string | null) => {
+    const template = taskTemplates.find((item) => item.value === value);
+    setSelectedTaskTemplate(value ?? '');
+    if (!template) return;
+    setTask(template.task);
+    setOptimizerTokenBudget(template.maxTokens);
   };
 
   const optimizeContext = async () => {
@@ -2286,6 +2333,21 @@ export default function App() {
                 </Stack>
                 <Sparkles size={18} />
               </Group>
+              <Select
+                label="Task template"
+                placeholder="Start from a common task"
+                value={selectedTaskTemplate || null}
+                onChange={applyTaskTemplate}
+                data={taskTemplates.map((template) => ({ value: template.value, label: template.label }))}
+                clearable
+              />
+              {selectedTaskTemplate && (
+                <Paper p="sm" radius="sm" withBorder bg="var(--mantine-color-default-hover)">
+                  <Text size="sm" c="dimmed">
+                    {taskTemplates.find((template) => template.value === selectedTaskTemplate)?.description}
+                  </Text>
+                </Paper>
+              )}
 	              <Textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Add pagination to Orders API" minRows={7} autosize />
               <Group align="end" gap="sm">
                 <NumberInput

@@ -19,6 +19,7 @@ RAG-e Khab is designed for Codex, Claude Code, Cursor, Gemini CLI, and other MCP
 - **Repository agent**: sync compact repository maps, module summaries, selected docs, build config, and source declarations.
 - **Context optimizer**: retrieve and trim task-specific context within a token budget.
 - **Context preview**: show selected sources, token estimates, and selection reasons before using optimized context.
+- **Task templates**: start common coding workflows such as bug fixes, endpoints, UI changes, refactors, and Safe Debug investigations from preset prompts and budgets.
 - **Context packages**: return class summaries, dependency chains, related tests, snippets, and selection reasons.
 - **Safe Debug Sessions**: sanitize CSV, JSON, and logs, then compact noisy artifacts before sharing them with agents.
 - **Artifact compression**: store raw developer artifacts locally while indexing compact summaries for retrieval.
@@ -252,6 +253,8 @@ Runtime settings for chat, embeddings, optimizer mode, and local LLM compression
 The optimizer token budget can be changed globally in Settings or overridden per run on the Context Optimizer page. API and MCP callers can pass `maxTokens` for a request-specific budget.
 
 Optimizer responses include a context preview with selected sources, selection reasons, relevance score, estimated tokens, and whether the source is compressed artifact context. The UI shows this preview so developers can inspect what an agent would receive before relying on it.
+
+The Context Optimizer page also includes task templates. Templates fill in a starting task prompt and a suggested token budget, but the developer can edit both before running optimization.
 
 ## Project Structure
 
