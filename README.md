@@ -16,6 +16,7 @@ RAG-e Khab is designed for Codex, Claude Code, Cursor, Gemini CLI, and other MCP
 
 - **Knowledge base**: upload files, add text notes, search, and chat with cited sources.
 - **Project memory**: store architecture decisions, conventions, bug fixes, patterns, domain knowledge, and technical debt.
+- **Stale memory detection**: flag repository-scoped memories when related indexed files changed after the memory was saved.
 - **Repository agent**: sync compact repository maps, module summaries, selected docs, build config, and source declarations.
 - **Context optimizer**: retrieve and trim task-specific context within a token budget.
 - **Context preview**: show selected sources, token estimates, and selection reasons before using optimized context.
@@ -236,6 +237,12 @@ Typical workflow:
 6. The agent requests small sanitized raw slices with `get_debug_artifact_slice` only when compact context is insufficient.
 7. The developer runs private follow-up queries and links a new sanitized artifact.
 8. Reusable sanitized lessons can be promoted to Memory.
+
+## Memory Freshness
+
+Repository-scoped memories include a freshness signal. When indexed files in the same repository and module changed after a memory was saved, the Memories page marks it for review and shows the related changed file paths.
+
+Global memories are not marked stale because they are not tied to a repository snapshot. The signal is computed at read time from repository metadata, so existing memories remain compatible.
 
 ## Configuration
 

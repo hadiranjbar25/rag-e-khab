@@ -2,6 +2,8 @@ package com.ragekhab.memory
 
 import com.ragekhab.document.DocumentChunk
 import com.ragekhab.project.ProjectRepository
+import com.ragekhab.repository.RepositoryFileMetadata
+import com.ragekhab.repository.RepositoryMetadataStore
 import com.ragekhab.search.SearchResult
 import com.ragekhab.search.VectorIndex
 import org.springframework.boot.context.event.ApplicationReadyEvent
@@ -17,6 +19,7 @@ import kotlin.math.roundToInt
 class MemoryService(
     private val repository: MemoryRepository,
     private val vectorIndex: VectorIndex,
+    private val repositoryMetadata: RepositoryMetadataStore,
 ) {
     @EventListener(ApplicationReadyEvent::class)
     fun indexStoredMemories() {
@@ -71,20 +74,20 @@ class MemoryService(
             rankedMemory.copy(memory = accessed)
         }
 
-        return RecallMemoryResponse(updated.map { it.toRelevantMemory() })
+        return RecallMemoryResponse(updated.map { it.copy(memory = it.memory.withFreshness()).toRelevantMemory() })
     }
 
     fun list(projectId: UUID? = null): List<AgentMemory> =
         repository.list().filter { memory ->
             projectId == null || projectId in memory.normalizedProjectIds()
-        }
+        }.map { it.withFreshness() }
 
     fun linkToProject(memoryId: UUID, projectId: UUID): AgentMemory {
         val memory = repository.get(memoryId) ?: error("Memory not found.")
         val updated = memory.copy(projectIds = (memory.normalizedProjectIds() + projectId).distinct())
         repository.save(updated)
         vectorIndex.upsert(listOf(updated.toChunk()))
-        return updated
+        return updated.withFreshness()
     }
 
     fun unlinkFromProject(memoryId: UUID, projectId: UUID): AgentMemory {
@@ -93,7 +96,7 @@ class MemoryService(
         val updated = memory.copy(projectIds = remaining.ifEmpty { listOf(ProjectRepository.DEFAULT_PROJECT_ID) })
         repository.save(updated)
         vectorIndex.upsert(listOf(updated.toChunk()))
-        return updated
+        return updated.withFreshness()
     }
 
     fun delete(id: UUID): Boolean {
@@ -125,6 +128,34 @@ class MemoryService(
         if (moduleFilter != null && module?.lowercase() != moduleFilter) return false
         if (request.projectId != null && request.projectId !in normalizedProjectIds()) return false
         return true
+    }
+
+    private fun AgentMemory.withFreshness(): AgentMemory {
+        val repositoryName = repository?.trim()?.takeIf { it.isNotBlank() } ?: return copy(freshness = MemoryFreshness())
+        val changedFiles = repositoryMetadata.listRepository(repositoryName)
+            .asSequence()
+            .filterNot { it.deleted }
+            .filter { it.matchesModule(module) }
+            .filter { it.lastModifiedAt.isAfter(createdAt) }
+            .sortedByDescending { it.lastModifiedAt }
+            .toList()
+
+        if (changedFiles.isEmpty()) return copy(freshness = MemoryFreshness())
+
+        val newest = changedFiles.first().lastModifiedAt
+        return copy(
+            freshness = MemoryFreshness(
+                status = MemoryFreshnessStatus.stale,
+                reason = "Repository files changed after this memory was saved.",
+                changedFiles = changedFiles.take(5).map { it.filePath },
+                newestChangeAt = newest,
+            ),
+        )
+    }
+
+    private fun RepositoryFileMetadata.matchesModule(memoryModule: String?): Boolean {
+        val normalized = memoryModule?.trim()?.takeIf { it.isNotBlank() } ?: return true
+        return module.equals(normalized, ignoreCase = true) || filePath.startsWith("$normalized/")
     }
 
     private fun AgentMemory.toChunk(): DocumentChunk =
@@ -168,6 +199,7 @@ class MemoryService(
             repository = memory.repository,
             module = memory.module,
             projectIds = memory.normalizedProjectIds(),
+            freshness = memory.freshness,
         )
 
     private fun String.normalizedTerms(): Set<String> =

@@ -25,6 +25,19 @@ data class AgentMemory(
     val repository: String? = null,
     val module: String? = null,
     val projectIds: List<UUID> = listOf(ProjectRepository.DEFAULT_PROJECT_ID),
+    val freshness: MemoryFreshness = MemoryFreshness(),
+)
+
+enum class MemoryFreshnessStatus {
+    current,
+    stale,
+}
+
+data class MemoryFreshness(
+    val status: MemoryFreshnessStatus = MemoryFreshnessStatus.current,
+    val reason: String? = null,
+    val changedFiles: List<String> = emptyList(),
+    val newestChangeAt: Instant? = null,
 )
 
 data class RememberRequest(
@@ -57,6 +70,7 @@ data class RelevantMemory(
     val repository: String? = null,
     val module: String? = null,
     val projectIds: List<UUID> = listOf(ProjectRepository.DEFAULT_PROJECT_ID),
+    val freshness: MemoryFreshness = MemoryFreshness(),
 )
 
 data class RecallMemoryResponse(

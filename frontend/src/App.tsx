@@ -198,6 +198,13 @@ type DeleteProjectResult = {
   deletedRepositoryMetadata: number;
 };
 
+type MemoryFreshness = {
+  status: 'current' | 'stale';
+  reason?: string;
+  changedFiles: string[];
+  newestChangeAt?: string;
+};
+
 type MemoryItem = {
   id: string;
   type: string;
@@ -209,6 +216,7 @@ type MemoryItem = {
   repository?: string;
   module?: string;
   projectIds: string[];
+  freshness?: MemoryFreshness;
 };
 
 type RepositoryFileMetadata = {
@@ -808,6 +816,7 @@ export default function App() {
   const pagedMemories = filteredMemories.slice(memoryPageStart, memoryPageStart + memoryPageSize);
   const memoryRangeStart = filteredMemories.length === 0 ? 0 : memoryPageStart + 1;
   const memoryRangeEnd = Math.min(memoryPageStart + memoryPageSize, filteredMemories.length);
+  const staleMemoryCount = filteredMemories.filter((memory) => memory.freshness?.status === 'stale').length;
 
   useEffect(() => {
     setMemoryPage(1);
@@ -1844,6 +1853,11 @@ export default function App() {
                   <Title order={2} size="h3">{filteredMemories.length} memories</Title>
                   <Text c="dimmed">{selectedProject?.name ?? 'General'} workspace · search decisions, conventions, fixes, and patterns.</Text>
                 </Stack>
+              {staleMemoryCount > 0 && (
+                <Alert color="yellow" variant="light" icon={<AlertCircle size={18} />}>
+                  {staleMemoryCount} memories may need review because related repository files changed after they were saved.
+                </Alert>
+              )}
               <TextInput
                 value={memorySearch}
                 onChange={(event) => setMemorySearch(event.currentTarget.value)}
@@ -1926,7 +1940,10 @@ export default function App() {
               {pagedMemories.map((memory) => (
                 <Paper component={Stack} gap="md" key={memory.id} p="md" radius="sm" withBorder>
                   <Group justify="space-between" align="flex-start">
-                    <Badge color={memoryBadgeColor(memory.type)} variant="light">{memoryLabels[memory.type] ?? memory.type}</Badge>
+                    <Group gap="xs">
+                      <Badge color={memoryBadgeColor(memory.type)} variant="light">{memoryLabels[memory.type] ?? memory.type}</Badge>
+                      {memory.freshness?.status === 'stale' && <Badge color="yellow" variant="light">Review</Badge>}
+                    </Group>
                     <Menu shadow="md" width={190} position="bottom-end">
                       <Menu.Target>
                         <Button variant="subtle" size="compact-sm">More</Button>
@@ -1942,6 +1959,16 @@ export default function App() {
                     <Badge color="gray" variant="light">{Math.round(memory.confidence * 100)}% confidence</Badge>
                     <Badge color="gray" variant="outline">{memory.repository ?? 'global'}</Badge>
                   </Group>
+                  {memory.freshness?.status === 'stale' && (
+                    <Alert color="yellow" variant="light" icon={<Clock3 size={16} />}>
+                      <Stack gap={4}>
+                        <Text size="sm">{memory.freshness.reason ?? 'Related repository files changed after this memory was saved.'}</Text>
+                        {memory.freshness.changedFiles.length > 0 && (
+                          <Text size="xs" ff="monospace">{memory.freshness.changedFiles.slice(0, 3).join(', ')}</Text>
+                        )}
+                      </Stack>
+                    </Alert>
+                  )}
                 </Paper>
               ))}
               {filteredMemories.length === 0 && (
