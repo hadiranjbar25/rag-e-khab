@@ -4,8 +4,10 @@ import com.ragekhab.document.DocumentService
 import com.ragekhab.project.CreateProjectRequest
 import com.ragekhab.project.DeleteProjectResult
 import com.ragekhab.project.Project
+import com.ragekhab.project.ProjectHealthService
 import com.ragekhab.project.ProjectRepository as ProjectStore
 import com.ragekhab.project.ProjectService
+import com.ragekhab.project.WorkspaceHealth
 import com.ragekhab.repository.LinkRepositoryRequest
 import com.ragekhab.repository.ProjectRepository as ProjectRepositoryLink
 import com.ragekhab.repository.Repository
@@ -26,6 +28,7 @@ import java.util.UUID
 @RequestMapping("/api/projects")
 class ProjectController(
     private val projectService: ProjectService,
+    private val projectHealthService: ProjectHealthService,
     private val documentService: DocumentService,
     private val repositoryCatalog: RepositoryCatalogStore,
 ) {
@@ -39,6 +42,11 @@ class ProjectController(
     @GetMapping("/{id}")
     fun get(@PathVariable id: UUID): Project =
         projectService.get(id) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found")
+
+    @GetMapping("/{id}/health")
+    fun health(@PathVariable id: UUID): WorkspaceHealth =
+        runCatching { projectHealthService.health(id) }
+            .getOrElse { throw ResponseStatusException(HttpStatus.NOT_FOUND, it.message ?: "Project not found") }
 
     @DeleteMapping("/{id}")
     fun delete(@PathVariable id: UUID): DeleteProjectResult {

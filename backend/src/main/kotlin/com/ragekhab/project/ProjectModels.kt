@@ -24,3 +24,29 @@ data class DeleteProjectResult(
     val deletedRepositoryMetadata: Int,
     val deletedRepositoryLinks: Int = 0,
 )
+
+enum class WorkspaceHealthStatus {
+    ready,
+    review,
+    setup,
+}
+
+data class WorkspaceHealthCheck(
+    val name: String,
+    val status: WorkspaceHealthStatus,
+    val detail: String,
+)
+
+data class WorkspaceHealth(
+    val projectId: UUID,
+    val score: Int,
+    val status: WorkspaceHealthStatus,
+    val summary: String,
+    val documentCount: Int,
+    val chunkCount: Int,
+    val memoryCount: Int,
+    val staleMemoryCount: Int,
+    val repositoryCount: Int,
+    val recentlySyncedRepositoryCount: Int,
+    val checks: List<WorkspaceHealthCheck>,
+)

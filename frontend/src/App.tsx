@@ -71,6 +71,28 @@ type ProjectItem = {
   documentCount: number;
 };
 
+type WorkspaceHealthStatus = 'ready' | 'review' | 'setup';
+
+type WorkspaceHealthCheck = {
+  name: string;
+  status: WorkspaceHealthStatus;
+  detail: string;
+};
+
+type WorkspaceHealth = {
+  projectId: string;
+  score: number;
+  status: WorkspaceHealthStatus;
+  summary: string;
+  documentCount: number;
+  chunkCount: number;
+  memoryCount: number;
+  staleMemoryCount: number;
+  repositoryCount: number;
+  recentlySyncedRepositoryCount: number;
+  checks: WorkspaceHealthCheck[];
+};
+
 type DocumentItem = {
   id: string;
   projectId: string;
@@ -581,6 +603,7 @@ export default function App() {
   const [repositoryStatus, setRepositoryStatus] = useState<RepositoryAgentStatus | null>(null);
   const [repositories, setRepositories] = useState<RepositoryItem[]>([]);
   const [projectRepositories, setProjectRepositories] = useState<RepositoryItem[]>([]);
+  const [workspaceHealth, setWorkspaceHealth] = useState<WorkspaceHealth | null>(null);
   const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
   const [debugSessions, setDebugSessions] = useState<DebugSession[]>([]);
   const [activeDebugSessionId, setActiveDebugSessionId] = useState('');
@@ -661,10 +684,11 @@ export default function App() {
       request<DocumentItem[]>(selectedProjectId ? `/api/documents?projectId=${selectedProjectId}` : '/api/documents'),
       request<AdminStatus>('/api/admin/status')
     ]);
-    const [memoryList, allMemoryList, repoStatus] = await Promise.all([
+    const [memoryList, allMemoryList, repoStatus, health] = await Promise.all([
       request<MemoryItem[]>(selectedProjectId ? `/api/memories?projectId=${selectedProjectId}` : '/api/memories').catch(() => []),
       request<MemoryItem[]>('/api/memories').catch(() => []),
-      request<RepositoryAgentStatus>('/api/repository-agent/status').catch(() => null)
+      request<RepositoryAgentStatus>('/api/repository-agent/status').catch(() => null),
+      selectedProjectId ? request<WorkspaceHealth>(`/api/projects/${selectedProjectId}/health`).catch(() => null) : Promise.resolve(null)
     ]);
     const [repositoryList, linkedRepositories] = await Promise.all([
       request<RepositoryItem[]>('/api/repositories').catch(() => []),
@@ -683,6 +707,7 @@ export default function App() {
     setMemories(memoryList);
     setAllMemories(allMemoryList);
     setRepositoryStatus(repoStatus);
+    setWorkspaceHealth(health);
     setRepositories(repositoryList);
     setProjectRepositories(linkedRepositories);
     setDebugSessions(safeDebugSessions);
@@ -746,6 +771,15 @@ export default function App() {
   const sortedDebugSessions = useMemo(() => [...debugSessions]
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [debugSessions]);
   const activeDebugSession = sortedDebugSessions.find((session) => session.id === activeDebugSessionId);
+  const activeWorkspaceHealth = workspaceHealth?.projectId === selectedProjectId ? workspaceHealth : null;
+  const workspaceHealthColor = activeWorkspaceHealth?.status === 'ready' ? 'green' : activeWorkspaceHealth?.status === 'review' ? 'yellow' : 'gray';
+  const workspaceHealthTitle = !activeWorkspaceHealth
+    ? 'Workspace health'
+    : activeWorkspaceHealth.status === 'ready'
+    ? 'Ready for agents'
+    : activeWorkspaceHealth.status === 'review'
+      ? 'Needs review'
+      : 'Setup needed';
 
   const stats = useMemo(() => [
     { label: 'Repositories', value: projectRepositories.length, detail: 'linked to this workspace', icon: Network, tone: 'purple' },
@@ -1537,10 +1571,29 @@ export default function App() {
         {view === 'home' && (
           <Stack component="section" gap="md">
             <Paper p="md" radius="sm" withBorder>
-              <Stack gap={4}>
-                <Text size="xs" fw={700} tt="uppercase" c="teal">Workspace health</Text>
-                <Title order={2} size="h3">{status?.index.vectorStore === 'qdrant' ? 'Ready for agents' : 'Local memory ready'}</Title>
-                <Text c="dimmed">{projectRepositories.length} repositories, {memories.length} memories, {totalChunks} source units available in this workspace.</Text>
+              <Stack gap="md">
+                <Group justify="space-between" align="flex-start">
+                  <Stack gap={4}>
+                    <Text size="xs" fw={700} tt="uppercase" c="teal">Workspace health</Text>
+                    <Title order={2} size="h3">{workspaceHealthTitle}</Title>
+                    <Text c="dimmed">{activeWorkspaceHealth?.summary ?? `${projectRepositories.length} repositories, ${memories.length} memories, ${totalChunks} source units available in this workspace.`}</Text>
+                  </Stack>
+                  <ThemeIcon variant="light" color={workspaceHealthColor} size={54} radius="sm">
+                    <Text fw={800}>{activeWorkspaceHealth?.score ?? 0}</Text>
+                  </ThemeIcon>
+                </Group>
+                <Progress value={activeWorkspaceHealth?.score ?? 0} color={workspaceHealthColor} radius="sm" />
+                {activeWorkspaceHealth && (
+                  <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
+                    {activeWorkspaceHealth.checks.map((check) => (
+                      <Paper component={Stack} gap={4} key={check.name} p="sm" radius="sm" withBorder>
+                        <Badge color={check.status === 'ready' ? 'green' : check.status === 'review' ? 'yellow' : 'gray'} variant="light">{check.status}</Badge>
+                        <Text fw={700}>{check.name}</Text>
+                        <Text size="xs" c="dimmed">{check.detail}</Text>
+                      </Paper>
+                    ))}
+                  </SimpleGrid>
+                )}
               </Stack>
             </Paper>
 

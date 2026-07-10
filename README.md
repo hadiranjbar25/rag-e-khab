@@ -15,6 +15,7 @@ RAG-e Khab is designed for Codex, Claude Code, Cursor, Gemini CLI, and other MCP
 ## Features
 
 - **Knowledge base**: upload files, add text notes, search, and chat with cited sources.
+- **Workspace health**: see whether a workspace has enough sources, memories, fresh repository context, and current guidance for coding agents.
 - **Project memory**: store architecture decisions, conventions, bug fixes, patterns, domain knowledge, and technical debt.
 - **Stale memory detection**: flag repository-scoped memories when related indexed files changed after the memory was saved.
 - **Repository agent**: sync compact repository maps, module summaries, selected docs, build config, and source declarations.
@@ -243,6 +244,17 @@ Typical workflow:
 Repository-scoped memories include a freshness signal. When indexed files in the same repository and module changed after a memory was saved, the Memories page marks it for review and shows the related changed file paths.
 
 Global memories are not marked stale because they are not tied to a repository snapshot. The signal is computed at read time from repository metadata, so existing memories remain compatible.
+
+## Workspace Health
+
+The dashboard shows a workspace health score from 0 to 100. It combines:
+
+- indexed source units
+- durable memories
+- linked repositories with recent syncs
+- stale memory count
+
+Health is an advisory readiness signal for agents. `ready` means the workspace has useful current context. `review` means the workspace is usable but some context may be stale or incomplete. `setup` means the workspace needs more sources, memories, or repository links.
 
 ## Configuration
 
