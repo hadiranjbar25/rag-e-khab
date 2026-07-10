@@ -20,6 +20,7 @@ RAG-e Khab is designed for Codex, Claude Code, Cursor, Gemini CLI, and other MCP
 - **Context optimizer**: retrieve and trim task-specific context within a token budget.
 - **Context preview**: show selected sources, token estimates, and selection reasons before using optimized context.
 - **Task templates**: start common coding workflows such as bug fixes, endpoints, UI changes, refactors, and Safe Debug investigations from preset prompts and budgets.
+- **Agent activity timeline**: inspect recent MCP tool usage without storing raw prompts or sensitive payloads.
 - **Context packages**: return class summaries, dependency chains, related tests, snippets, and selection reasons.
 - **Safe Debug Sessions**: sanitize CSV, JSON, and logs, then compact noisy artifacts before sharing them with agents.
 - **Artifact compression**: store raw developer artifacts locally while indexing compact summaries for retrieval.
@@ -203,6 +204,8 @@ Important tools:
 | `get_artifact_slice` | Explicitly expand a raw artifact line slice. |
 
 Agents should not request raw production data, token maps, emails, phone numbers, addresses, raw SQL output, or raw database rows.
+
+Agent-facing MCP tool calls are recorded in an activity timeline. The timeline stores tool name, status, timestamp, and a short safe summary so developers can see what agents did without persisting raw arguments or sensitive data.
 
 ## Safe Debug Sessions
 

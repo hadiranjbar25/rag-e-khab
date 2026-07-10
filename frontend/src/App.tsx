@@ -149,6 +149,17 @@ type AdminStatus = {
   settings: RuntimeSettings;
 };
 
+type AgentActivity = {
+  id: string;
+  type: string;
+  action: string;
+  detail: string;
+  status: 'success' | 'failure';
+  projectId?: string;
+  sessionId?: string;
+  createdAt: string;
+};
+
 type RuntimeSettings = {
   llm: {
     provider: string;
@@ -430,6 +441,21 @@ const formatBytes = (bytes: number) => {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 };
 
+const activityTitle = (action: string) => {
+  const labels: Record<string, string> = {
+    recall_memory: 'Agent recalled memory',
+    optimize_context: 'Agent optimized context',
+    build_context_package: 'Agent built context package',
+    search_documents: 'Agent searched knowledge',
+    remember: 'Agent stored memory',
+    get_debug_session_state: 'Agent inspected Safe Debug',
+    get_debug_artifact_slice: 'Agent expanded debug slice',
+    create_debug_data_request: 'Agent requested debug data',
+    add_artifact: 'Agent added artifact',
+  };
+  return labels[action] ?? `Agent used ${action.replaceAll('_', ' ')}`;
+};
+
 const safeDebugInstructionFor = (sessionId?: string) => `You are connected to a Safe Debug Session.
 
 Current sessionId: ${sessionId || '<select a debug session>'}
@@ -538,6 +564,7 @@ export default function App() {
   const [repositoryStatus, setRepositoryStatus] = useState<RepositoryAgentStatus | null>(null);
   const [repositories, setRepositories] = useState<RepositoryItem[]>([]);
   const [projectRepositories, setProjectRepositories] = useState<RepositoryItem[]>([]);
+  const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
   const [debugSessions, setDebugSessions] = useState<DebugSession[]>([]);
   const [activeDebugSessionId, setActiveDebugSessionId] = useState('');
   const [debugDetail, setDebugDetail] = useState<DebugSessionDetail | null>(null);
@@ -626,7 +653,10 @@ export default function App() {
       request<RepositoryItem[]>('/api/repositories').catch(() => []),
       selectedProjectId ? request<RepositoryItem[]>(`/api/projects/${selectedProjectId}/repositories`).catch(() => []) : Promise.resolve([])
     ]);
-    const safeDebugSessions = await request<DebugSession[]>('/api/debug-sessions').catch(() => []);
+    const [safeDebugSessions, activities] = await Promise.all([
+      request<DebugSession[]>('/api/debug-sessions').catch(() => []),
+      request<AgentActivity[]>('/api/activity?limit=20').catch(() => []),
+    ]);
     setProjects(projectList);
     if (projectList.length > 0) {
       const hasSelectedProject = projectList.some((project) => project.id === selectedProjectId);
@@ -639,6 +669,7 @@ export default function App() {
     setRepositories(repositoryList);
     setProjectRepositories(linkedRepositories);
     setDebugSessions(safeDebugSessions);
+    setAgentActivities(activities);
     if (!activeDebugSessionId && safeDebugSessions.length > 0) setActiveDebugSessionId(safeDebugSessions[0].id);
     setStatus(admin);
     setSettingsDraft(admin.settings);
@@ -787,6 +818,14 @@ export default function App() {
 
   const recentActivity = useMemo(() => {
     const activities = [
+      ...agentActivities.map((activity) => ({
+        id: `agent-${activity.id}`,
+        icon: activity.status === 'failure' ? AlertCircle : Sparkles,
+        title: activityTitle(activity.action),
+        detail: activity.detail,
+        at: activity.createdAt,
+        tone: activity.status === 'failure' ? 'red' : 'teal'
+      })),
       ...documents.slice(0, 4).map((doc) => ({
         id: `doc-${doc.id}`,
         icon: FileText,
@@ -816,7 +855,7 @@ export default function App() {
       .filter((item) => item.at)
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
       .slice(0, 8);
-  }, [documents, memories, repositoryStatus?.repositories]);
+  }, [agentActivities, documents, memories, repositoryStatus?.repositories]);
 
   const upload = async (file: File | null) => {
     if (!file) return;
@@ -1514,7 +1553,7 @@ export default function App() {
 
               <Paper component="section" p="md" radius="sm" withBorder>
                 <Group justify="space-between" align="center" mb="md">
-                  <Title order={2} size="h4">Recent activity</Title>
+                  <Title order={2} size="h4">Agent activity timeline</Title>
                   <Clock3 size={18} />
                 </Group>
                 <Stack gap="md">
@@ -1522,7 +1561,7 @@ export default function App() {
                     const Icon = item.icon;
                     return (
                     <Paper component={Group} key={item.id} p="sm" radius="sm" withBorder gap="sm" wrap="nowrap">
-                      <ThemeIcon variant="light" color={item.tone === 'green' ? 'green' : item.tone === 'purple' ? 'violet' : 'teal'} size={32} radius="sm"><Icon size={16} /></ThemeIcon>
+                      <ThemeIcon variant="light" color={item.tone === 'green' ? 'green' : item.tone === 'purple' ? 'violet' : item.tone === 'red' ? 'red' : 'teal'} size={32} radius="sm"><Icon size={16} /></ThemeIcon>
                       <Box flex={1} miw={0}>
                         <Text fw={700}>{item.title}</Text>
                         <Text size="sm" c="dimmed">{item.detail}</Text>
@@ -1533,8 +1572,8 @@ export default function App() {
                   })}
                   {recentActivity.length === 0 && (
                     <Paper p="md" radius="sm" withBorder>
-                      <Text fw={700}>No activity yet</Text>
-                      <Text size="sm" c="dimmed">Scan a repository, add a memory, or index knowledge to make this workspace useful for coding agents.</Text>
+                      <Text fw={700}>No agent activity yet</Text>
+                      <Text size="sm" c="dimmed">Use MCP tools or optimize context to populate the timeline.</Text>
                     </Paper>
                   )}
                 </Stack>

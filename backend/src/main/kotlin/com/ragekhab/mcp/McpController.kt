@@ -1,6 +1,9 @@
 package com.ragekhab.mcp
 
 import com.ragekhab.chat.ChatService
+import com.ragekhab.activity.ActivityStatus
+import com.ragekhab.activity.AgentActivityService
+import com.ragekhab.activity.RecordActivityRequest
 import com.ragekhab.artifact.ArtifactService
 import com.ragekhab.context.ContextOptimizationRequest
 import com.ragekhab.context.ContextOptimizerService
@@ -48,6 +51,7 @@ class McpController(
     private val artifactService: ArtifactService,
     private val projectService: ProjectService,
     private val debugSessions: DebugSessionService,
+    private val activityService: AgentActivityService,
     private val objectMapper: ObjectMapper,
 ) {
     @PostMapping
@@ -60,16 +64,30 @@ class McpController(
                     "capabilities" to mapOf("tools" to emptyMap<String, Any>()),
                 )
                 "tools/list" -> mapOf("tools" to tools())
-                "tools/call" -> mapOf(
-                    "content" to listOf(mapOf("type" to "text", "text" to objectMapper.writeValueAsString(callTool(request.params ?: emptyMap())))),
-                    "isError" to false,
-                )
+                "tools/call" -> toolCallResponse(request.params ?: emptyMap())
                 else -> error("Unsupported MCP method '${request.method}'")
             }
         }.fold(
             onSuccess = { JsonRpcResponse(id = request.id, result = it) },
             onFailure = { JsonRpcResponse(id = request.id, error = JsonRpcError(-32603, it.message ?: "Internal error")) },
         )
+
+    private fun toolCallResponse(params: Map<String, Any?>): Map<String, Any> {
+        val name = params["name"]?.toString() ?: "unknown"
+        val arguments = params["arguments"] as? Map<*, *> ?: emptyMap<Any, Any>()
+        return runCatching { callTool(params) }
+            .onSuccess { recordToolActivity(name, arguments, ActivityStatus.success) }
+            .onFailure { recordToolActivity(name, arguments, ActivityStatus.failure) }
+            .fold(
+                onSuccess = {
+                    mapOf(
+                        "content" to listOf(mapOf("type" to "text", "text" to objectMapper.writeValueAsString(it))),
+                        "isError" to false,
+                    )
+                },
+                onFailure = { throw it },
+            )
+    }
 
     private fun callTool(params: Map<String, Any?>): Any {
         val name = params["name"]?.toString() ?: error("Missing tool name")
@@ -261,4 +279,33 @@ class McpController(
             "properties" to properties.mapValues { (_, type) -> mapOf("type" to type) },
         ),
     )
+
+    private fun recordToolActivity(name: String, arguments: Map<*, *>, status: ActivityStatus) {
+        val projectId = arguments["projectId"]?.toString()?.takeIf { it.isNotBlank() }?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        val sessionId = arguments["sessionId"]?.toString()?.takeIf { it.isNotBlank() }?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        activityService.record(
+            RecordActivityRequest(
+                type = "mcp_tool",
+                action = name,
+                detail = toolActivityDetail(name, arguments),
+                status = status,
+                projectId = projectId,
+                sessionId = sessionId,
+            ),
+        )
+    }
+
+    private fun toolActivityDetail(name: String, arguments: Map<*, *>): String =
+        when (name) {
+            "recall_memory" -> "Recalled memories for task '${arguments["task"]?.toString()?.take(80).orEmpty()}'"
+            "optimize_context" -> "Optimized context for task '${arguments["task"]?.toString()?.take(80).orEmpty()}'"
+            "build_context_package" -> "Built context package for '${arguments["task"]?.toString()?.take(80).orEmpty()}'"
+            "search_documents" -> "Searched documents for '${arguments["query"]?.toString()?.take(80).orEmpty()}'"
+            "remember" -> "Stored ${arguments["type"]?.toString()?.ifBlank { "memory" } ?: "memory"}"
+            "get_debug_session_state" -> "Read Safe Debug session state"
+            "get_debug_artifact_slice" -> "Expanded Safe Debug artifact slice"
+            "create_debug_data_request" -> "Requested more sanitized debug data for ${arguments["entity"]?.toString()?.ifBlank { "entity" } ?: "entity"}"
+            "add_artifact" -> "Added compressed artifact '${arguments["title"]?.toString()?.take(80).orEmpty()}'"
+            else -> "Called MCP tool '$name'"
+        }
 }
