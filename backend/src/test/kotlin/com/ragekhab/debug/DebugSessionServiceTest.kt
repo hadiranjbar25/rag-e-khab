@@ -115,4 +115,18 @@ class DebugSessionServiceTest {
         assertContains(slice.text, "IllegalStateException")
         assertFalse(slice.text.contains("jane@example.com"))
     }
+
+    @Test
+    fun `debug session suggests sanitized reusable memory lessons`() {
+        val session = service.create("memory suggestions")
+
+        service.recordAgentRequest(session.id, "Payment failed after ORDER_001 was archived")
+
+        val detail = service.detail(session.id)
+        val suggestion = detail.memorySuggestions.first()
+
+        assertTrue(detail.memorySuggestions.isNotEmpty())
+        assertContains(suggestion.content, "affected entity")
+        assertFalse(suggestion.content.contains("ORDER_001"))
+    }
 }

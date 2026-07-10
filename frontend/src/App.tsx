@@ -341,6 +341,14 @@ type DebugAuditEvent = {
   createdAt: string;
 };
 
+type DebugMemorySuggestion = {
+  id: string;
+  type: string;
+  content: string;
+  confidence: number;
+  reason: string;
+};
+
 type DebugSessionDetail = {
   session: DebugSession;
   tokenMappings: DebugTokenMapping[];
@@ -348,6 +356,7 @@ type DebugSessionDetail = {
   dataRequests: DebugDataRequest[];
   notes: DebugNote[];
   auditEvents: DebugAuditEvent[];
+  memorySuggestions: DebugMemorySuggestion[];
 };
 
 type SanitizeDebugResponse = {
@@ -1322,6 +1331,12 @@ export default function App() {
     }
   };
 
+  const applyDebugMemorySuggestion = (suggestion: DebugMemorySuggestion) => {
+    setDebugMemoryTypeDraft(suggestion.type);
+    setDebugMemoryContentDraft(suggestion.content);
+    setDebugMemoryConfidenceDraft(suggestion.confidence);
+  };
+
   const updateDebugDataRequest = async (requestId: string, action: 'complete' | 'reject') => {
     if (!activeDebugSessionId) return;
     setBusy(true);
@@ -2226,6 +2241,25 @@ export default function App() {
                           </Stack>
                           <Brain size={18} />
                         </Group>
+                        {debugDetail.memorySuggestions.length > 0 && (
+                          <Stack gap="sm">
+                            <Group justify="space-between" align="center">
+                              <Text fw={700}>Suggested lessons</Text>
+                              <Badge color="teal" variant="light">{debugDetail.memorySuggestions.length}</Badge>
+                            </Group>
+                            {debugDetail.memorySuggestions.map((suggestion) => (
+                              <Paper component={Stack} gap="xs" key={suggestion.id} p="sm" radius="sm" withBorder>
+                                <Group justify="space-between" align="flex-start">
+                                  <Stack gap={2} miw={0}>
+                                    <Text size="sm">{suggestion.content}</Text>
+                                    <Text size="xs" c="dimmed">{memoryLabels[suggestion.type] ?? suggestion.type} · {suggestion.reason}</Text>
+                                  </Stack>
+                                  <Button size="xs" variant="light" color="teal" onClick={() => applyDebugMemorySuggestion(suggestion)}>Use</Button>
+                                </Group>
+                              </Paper>
+                            ))}
+                          </Stack>
+                        )}
                         <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                           <NativeSelect value={debugMemoryTypeDraft} onChange={(event) => setDebugMemoryTypeDraft(event.target.value)} data={memoryTypes.map((type) => ({ value: type, label: memoryLabels[type] ?? type }))} />
                           <TextInput value={debugMemoryRepositoryDraft} onChange={(event) => setDebugMemoryRepositoryDraft(event.target.value)} placeholder="repository optional" />

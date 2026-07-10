@@ -14,3 +14,4 @@ ADRs are intentionally short. Each one explains the context, the decision, and t
 - [0006 - Preview agent context before use](0006-previewable-agent-context.md)
 - [0007 - Task templates for context optimization](0007-task-templates-for-context-optimization.md)
 - [0008 - Agent activity timeline](0008-agent-activity-timeline.md)
+- [0009 - Safe Debug memory suggestions require developer approval](0009-safe-debug-memory-suggestions.md)

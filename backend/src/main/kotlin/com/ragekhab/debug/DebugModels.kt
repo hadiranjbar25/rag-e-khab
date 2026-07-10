@@ -143,6 +143,15 @@ data class DebugSessionDetail(
     val dataRequests: List<DebugDataRequest>,
     val notes: List<DebugNote>,
     val auditEvents: List<DebugAuditEvent>,
+    val memorySuggestions: List<DebugMemorySuggestion> = emptyList(),
+)
+
+data class DebugMemorySuggestion(
+    val id: String,
+    val type: MemoryType,
+    val content: String,
+    val confidence: Double,
+    val reason: String,
 )
 
 data class RecordAgentRequest(val request: String)

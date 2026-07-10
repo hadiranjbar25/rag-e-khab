@@ -7,6 +7,7 @@ import com.ragekhab.artifact.CompressionInput
 import com.ragekhab.artifact.ContextCompressor
 import com.ragekhab.memory.AgentMemory
 import com.ragekhab.memory.MemoryService
+import com.ragekhab.memory.MemoryType
 import com.ragekhab.memory.RememberRequest
 import com.ragekhab.document.ArtifactKind
 import org.springframework.stereotype.Service
@@ -47,6 +48,7 @@ class DebugSessionService(
             dataRequests = store.dataRequestsFor(sessionId),
             notes = store.notesFor(sessionId),
             auditEvents = store.auditEventsFor(sessionId),
+            memorySuggestions = memorySuggestions(sessionId),
         )
     }
 
@@ -213,6 +215,57 @@ class DebugSessionService(
         touch(sessionId)
         audit(sessionId, "memory_promoted", memory.id.toString())
         return memory
+    }
+
+    private fun memorySuggestions(sessionId: UUID): List<DebugMemorySuggestion> {
+        val suggestions = mutableListOf<DebugMemorySuggestion>()
+        store.dataRequestsFor(sessionId)
+            .filter { it.status == DebugDataRequestStatus.completed }
+            .take(3)
+            .forEach { request ->
+                suggestions += DebugMemorySuggestion(
+                    id = "request-${request.id}",
+                    type = MemoryType.ProjectKnowledge,
+                    content = "When debugging ${request.entity.lowercase()} issues, check ${request.relation ?: request.entity} data because ${sanitizeSuggestion(request.reason)}.",
+                    confidence = 0.78,
+                    reason = "Completed Safe Debug data request",
+                )
+            }
+        store.notesFor(sessionId)
+            .take(3)
+            .forEach { note ->
+                suggestions += DebugMemorySuggestion(
+                    id = "note-${note.id}",
+                    type = MemoryType.BugFix,
+                    content = sanitizeSuggestion(note.request).let { "Debugging lesson: $it" },
+                    confidence = 0.72,
+                    reason = "Agent follow-up request",
+                )
+            }
+        store.artifactsFor(sessionId)
+            .asSequence()
+            .mapNotNull { artifact ->
+                val clue = artifact.compactText
+                    ?.lines()
+                    ?.firstOrNull { line -> debugLessonLineRegex.containsMatchIn(line) }
+                    ?: artifact.sanitizedText.lines().firstOrNull { line -> debugLessonLineRegex.containsMatchIn(line) }
+                clue?.let {
+                    DebugMemorySuggestion(
+                        id = "artifact-${artifact.id}",
+                        type = MemoryType.BugFix,
+                        content = "Debugging lesson from ${artifact.sourceName}: ${sanitizeSuggestion(it)}",
+                        confidence = 0.7,
+                        reason = "Sanitized artifact contains failure signal",
+                    )
+                }
+            }
+            .take(3)
+            .forEach { suggestions += it }
+        return suggestions
+            .map { it.copy(content = it.content.trim().take(280).trimEnd('.', ';', ':') + ".") }
+            .filter { it.content.length >= 24 && validateSuggestionSafe(it.content) }
+            .distinctBy { it.content.lowercase() }
+            .take(5)
     }
 
     fun contextForMcp(sessionId: UUID): DebugSessionContext {
@@ -547,6 +600,20 @@ class DebugSessionService(
         }
     }
 
+    private fun validateSuggestionSafe(content: String): Boolean =
+        runCatching {
+            validateMemoryPromotionContent(content)
+            true
+        }.getOrDefault(false)
+
+    private fun sanitizeSuggestion(value: String): String =
+        value
+            .replace(debugTokenRegex, "the affected entity")
+            .replace(uuidRegex, "the affected entity")
+            .replace(Regex("""\b\d{4,}\b"""), "the affected entity")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+
     private fun parseCsv(raw: String): List<List<String>> {
         val rows = mutableListOf<List<String>>()
         val row = mutableListOf<String>()
@@ -660,6 +727,7 @@ class DebugSessionService(
         private val dobInTextRegex = Regex("""(?i)\b(dob|date_of_birth|birth_date|birthday)\s*[:=]\s*(\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4})""")
         private val likelyFullNameRegex = Regex("""[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}""")
         private val debugTokenRegex = Regex("""\b(?:USER|ORDER|PAYMENT|EMAIL|PERSON|PHONE|ADDRESS|UNKNOWN|SECRET|SSN|DATE|UUID|IP)_\d{3,}\b""")
+        private val debugLessonLineRegex = Regex("""\b(error|failed|failure|exception|caused by|invalid|timeout|rejected|stuck)\b""", RegexOption.IGNORE_CASE)
         private val sqlRealIdRegex = Regex("""\bwhere\s+[a-z_][a-z0-9_]*\s*=\s*(?:\d+|'[^']+')""", RegexOption.IGNORE_CASE)
         private val riskyColumns = listOf("email", "phone", "name", "address", "iban", "card", "ssn", "dob", "birth", "note", "comment", "description", "secret", "token", "api_key")
         private val configuredRules = mapOf(
