@@ -1397,6 +1397,7 @@ export default function App() {
   });
 
   const pendingDebugRequests = (debugDetail?.dataRequests ?? []).filter((item) => item.status === 'pending');
+  const debugMemorySuggestions = debugDetail?.memorySuggestions ?? [];
   const latestDebugArtifact = debugDetail?.artifacts[0];
   const latestDebugText = debugSanitizedText || latestDebugArtifact?.compactText || latestDebugArtifact?.sanitizedText || '';
 
@@ -2241,13 +2242,13 @@ export default function App() {
                           </Stack>
                           <Brain size={18} />
                         </Group>
-                        {debugDetail.memorySuggestions.length > 0 && (
+                        {debugMemorySuggestions.length > 0 && (
                           <Stack gap="sm">
                             <Group justify="space-between" align="center">
                               <Text fw={700}>Suggested lessons</Text>
-                              <Badge color="teal" variant="light">{debugDetail.memorySuggestions.length}</Badge>
+                              <Badge color="teal" variant="light">{debugMemorySuggestions.length}</Badge>
                             </Group>
-                            {debugDetail.memorySuggestions.map((suggestion) => (
+                            {debugMemorySuggestions.map((suggestion) => (
                               <Paper component={Stack} gap="xs" key={suggestion.id} p="sm" radius="sm" withBorder>
                                 <Group justify="space-between" align="flex-start">
                                   <Stack gap={2} miw={0}>
