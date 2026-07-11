@@ -97,6 +97,7 @@ import {
   DebugMemorySuggestion,
   DebugSessionDetail,
   SanitizeDebugResponse,
+  SanitizationProfile,
   View,
   IngestMode,
   viewRoutes,
@@ -145,6 +146,7 @@ export function useRageKhabAppModel() {
   const [workspaceHealth, setWorkspaceHealth] = useState<WorkspaceHealth | null>(null);
   const [agentActivities, setAgentActivities] = useState<AgentActivity[]>([]);
   const [debugSessions, setDebugSessions] = useState<DebugSession[]>([]);
+  const [sanitizationProfiles, setSanitizationProfiles] = useState<SanitizationProfile[]>([]);
   const [activeDebugSessionId, setActiveDebugSessionId] = useState('');
   const [debugDetail, setDebugDetail] = useState<DebugSessionDetail | null>(null);
   const [debugTitle, setDebugTitle] = useState('');
@@ -171,6 +173,7 @@ export function useRageKhabAppModel() {
   const [memorySearch, setMemorySearch] = useState('');
   const [memoryPage, setMemoryPage] = useState(1);
   const [memoryPageSize, setMemoryPageSize] = useState(12);
+  const [expandedMemoryIds, setExpandedMemoryIds] = useState<Record<string, boolean>>({});
   const [repositoryFilePage, setRepositoryFilePage] = useState(1);
   const [repositoryFilePageSize, setRepositoryFilePageSize] = useState(25);
   const [memoryTypeDraft, setMemoryTypeDraft] = useState('CodingConvention');
@@ -237,8 +240,9 @@ export function useRageKhabAppModel() {
       request<RepositoryItem[]>('/api/repositories').catch(() => []),
       selectedProjectId ? request<RepositoryItem[]>(`/api/projects/${selectedProjectId}/repositories`).catch(() => []) : Promise.resolve([])
     ]);
-    const [safeDebugSessions, activities] = await Promise.all([
+    const [safeDebugSessions, safeDebugProfiles, activities] = await Promise.all([
       request<DebugSession[]>('/api/debug-sessions').catch(() => []),
+      request<SanitizationProfile[]>('/api/debug-sessions/sanitization-profiles').catch(() => []),
       request<AgentActivity[]>('/api/activity?limit=20').catch(() => []),
     ]);
     setProjects(projectList);
@@ -254,6 +258,7 @@ export function useRageKhabAppModel() {
     setRepositories(repositoryList);
     setProjectRepositories(linkedRepositories);
     setDebugSessions(safeDebugSessions);
+    setSanitizationProfiles(safeDebugProfiles);
     setAgentActivities(activities);
     if (!activeDebugSessionId && safeDebugSessions.length > 0) setActiveDebugSessionId(safeDebugSessions[0].id);
     setStatus(admin);
@@ -412,6 +417,10 @@ export function useRageKhabAppModel() {
   const memoryRangeStart = filteredMemories.length === 0 ? 0 : memoryPageStart + 1;
   const memoryRangeEnd = Math.min(memoryPageStart + memoryPageSize, filteredMemories.length);
   const staleMemoryCount = filteredMemories.filter((memory) => memory.freshness?.status === 'stale').length;
+
+  const toggleMemoryExpanded = (id: string) => {
+    setExpandedMemoryIds((current) => ({ ...current, [id]: !current[id] }));
+  };
 
   useEffect(() => {
     setMemoryPage(1);
@@ -1036,7 +1045,7 @@ export function useRageKhabAppModel() {
     token ? debugDetail?.tokenMappings.find((mapping) => mapping.token.toLowerCase() === token.toLowerCase()) : undefined;
 
   const artifactTextFor = (artifact: DebugArtifact): string =>
-    artifact.compactText || artifact.sanitizedText;
+    artifact.compactText || artifact.sanitizedContent || artifact.sanitizedText;
 
   const suggestedSqlFor = (item: DebugDataRequest): string => {
     const mapping = tokenMappingFor(item.parentToken);
@@ -1095,6 +1104,8 @@ export function useRageKhabAppModel() {
     setAgentActivities,
     debugSessions,
     setDebugSessions,
+    sanitizationProfiles,
+    setSanitizationProfiles,
     activeDebugSessionId,
     setActiveDebugSessionId,
     debugDetail,
@@ -1147,6 +1158,8 @@ export function useRageKhabAppModel() {
     setMemoryPage,
     memoryPageSize,
     setMemoryPageSize,
+    expandedMemoryIds,
+    setExpandedMemoryIds,
     repositoryFilePage,
     setRepositoryFilePage,
     repositoryFilePageSize,
@@ -1229,6 +1242,7 @@ export function useRageKhabAppModel() {
     memoryRangeStart,
     memoryRangeEnd,
     staleMemoryCount,
+    toggleMemoryExpanded,
     recentActivity,
     upload,
     addText,

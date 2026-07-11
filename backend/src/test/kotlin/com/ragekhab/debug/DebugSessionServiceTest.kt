@@ -75,7 +75,6 @@ class DebugSessionServiceTest {
 
         assertTrue(response.sanitizedText.contains("EMAIL_001"))
         assertTrue(response.sanitizedText.contains("PERSON_001"))
-        assertTrue(response.sanitizedText.contains("SECRET_001"))
         assertTrue(response.sanitizedText.contains("Called EMAIL_001 about retry"))
         assertFalse(response.sanitizedText.contains("jane@example.com"))
         assertFalse(response.sanitizedText.contains("Jane Doe"))
@@ -156,5 +155,107 @@ class DebugSessionServiceTest {
         assertTrue(comparison.totalChangedLines >= 2)
         assertContains(comparedText, "EMAIL_001")
         assertFalse(comparedText.contains("jane@example.com"))
+    }
+
+    @Test
+    fun `project profile can keep safe custom fields and tokenize custom sensitive fields`() {
+        val session = service.create("custom profile")
+        val profile = SanitizationProfile(
+            id = "project-commerce",
+            name = "Commerce project",
+            scope = SanitizationProfileScope.project,
+            rules = listOf(
+                SanitizationRule(
+                    id = "project/internal-reference",
+                    fieldPattern = "internal_customer_reference",
+                    action = SanitizationAction.keep,
+                    priority = 950,
+                ),
+                SanitizationRule(
+                    id = "project/visit-motive",
+                    fieldPattern = "visit_motive_id",
+                    action = SanitizationAction.tokenize,
+                    tokenType = "VISIT_MOTIVE",
+                    priority = 950,
+                ),
+            ),
+        )
+
+        val response = service.sanitize(
+            session.id,
+            SanitizeDebugRequest(
+                inputType = DebugInputType.csv,
+                sourceName = "visits",
+                rawText = "internal_customer_reference,visit_motive_id\nSAFE-REF,42",
+                projectProfile = profile,
+            ),
+        )
+
+        assertContains(response.sanitizedText, "SAFE-REF")
+        assertContains(response.sanitizedText, "VISIT_MOTIVE_001")
+        assertTrue(response.artifact.audit.any { it.field == "visit_motive_id" && it.matchedRule == "project/visit-motive" })
+    }
+
+    @Test
+    fun `hard blocked secrets cannot be exposed by artifact override or mcp`() {
+        val session = service.create("hard blocked")
+        val unsafeOverride = SanitizationProfile(
+            id = "artifact-unsafe",
+            name = "Unsafe artifact",
+            scope = SanitizationProfileScope.session,
+            rules = listOf(
+                SanitizationRule(
+                    id = "artifact/keep-password",
+                    fieldPattern = "password",
+                    action = SanitizationAction.keep,
+                    priority = 20_000,
+                ),
+                SanitizationRule(
+                    id = "artifact/keep-cvv",
+                    fieldPattern = "cvv",
+                    action = SanitizationAction.keep,
+                    priority = 20_000,
+                ),
+            ),
+        )
+
+        val response = service.sanitize(
+            session.id,
+            SanitizeDebugRequest(
+                inputType = DebugInputType.csv,
+                sourceName = "payments",
+                rawText = "password,access_token,private_key,cvv,status\nsecret-pass,token-12345678901234567890,-----BEGIN PRIVATE KEY-----,123,failed",
+                artifactProfile = unsafeOverride,
+            ),
+        )
+        val mcpArtifact = service.contextForMcp(session.id).artifacts.first { it.id == response.artifact.id }
+
+        assertFalse(response.sanitizedText.contains("secret-pass"))
+        assertFalse(response.sanitizedText.contains("token-12345678901234567890"))
+        assertFalse(response.sanitizedText.contains("PRIVATE KEY"))
+        assertFalse(response.sanitizedText.contains("123"))
+        assertFalse(mcpArtifact.sanitizedContent.contains("secret-pass"))
+        assertTrue(response.artifact.audit.any { it.blocking && it.matchedRule.startsWith("built-in/hard-block") })
+    }
+
+    @Test
+    fun `mcp artifact exposes sanitized summary without raw values`() {
+        val session = service.create("mcp summary")
+        val response = service.sanitize(
+            session.id,
+            SanitizeDebugRequest(
+                inputType = DebugInputType.csv,
+                sourceName = "users",
+                rawText = "id,email,status\n2,jane@example.com,active",
+            ),
+        )
+
+        val artifact = service.contextForMcp(session.id).artifacts.first { it.id == response.artifact.id }
+
+        assertEquals("Balanced", artifact.profileName)
+        assertTrue(artifact.summary.tokenized >= 1)
+        assertContains(artifact.sanitizedContent, "USER_001")
+        assertFalse(artifact.sanitizedContent.contains("jane@example.com"))
+        assertFalse(artifact.audit.any { it.result == "jane@example.com" })
     }
 }

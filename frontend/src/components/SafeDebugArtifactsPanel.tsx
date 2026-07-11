@@ -14,30 +14,7 @@ import {
 } from '@mantine/core';
 import { Copy, FileText } from 'lucide-react';
 import type React from 'react';
-
-type DebugInputType = 'csv' | 'json' | 'log';
-
-type DebugWarning = {
-  type: 'email' | 'phone' | 'name' | 'address' | 'unknown_pii' | 'risky_column';
-  message: string;
-  field?: string;
-  count?: number;
-};
-
-type DebugArtifact = {
-  id: string;
-  sessionId: string;
-  inputType: DebugInputType;
-  sourceName: string;
-  sanitizedText: string;
-  compactText?: string;
-  rawTokenEstimate?: number;
-  compressedTokenEstimate?: number;
-  reductionPercent?: number;
-  warningSummary: DebugWarning[];
-  dataRequestId?: string;
-  createdAt: string;
-};
+import type { DebugArtifact } from '../appSupport';
 
 type DebugArtifactSlice = {
   artifactId: string;
@@ -128,15 +105,36 @@ export function SafeDebugArtifactsPanel({
               <Stack gap={2} miw={0}>
                 <Text fw={700}>{artifact.inputType.toUpperCase()} · {artifact.sourceName}</Text>
                 <Text size="xs" c="dimmed">{new Date(artifact.createdAt).toLocaleString()}</Text>
-                <Text size="xs" c="dimmed">{artifact.warningSummary.length} warning group(s)</Text>
+                <Text size="xs" c="dimmed">{artifact.profileName ?? 'Balanced'} profile · {artifact.warningSummary.length} warning group(s)</Text>
               </Stack>
               <Group gap="xs">
+                {artifact.publishable === false && <Badge color="red" variant="light">Review required</Badge>}
                 {artifact.reductionPercent !== undefined && <Badge color="teal" variant="light">{artifact.reductionPercent}% smaller</Badge>}
                 <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(artifactTextFor(artifact), artifact.id)} title="Copy compact artifact">
                   <Copy size={17} />
                 </ActionIcon>
               </Group>
             </Group>
+            {artifact.summary && (
+              <Group gap="xs">
+                <Badge color="gray" variant="light">{artifact.summary.kept} kept</Badge>
+                <Badge color="teal" variant="light">{artifact.summary.tokenized} tokenized</Badge>
+                <Badge color="red" variant="light">{artifact.summary.removed} removed</Badge>
+                <Badge color="yellow" variant="light">{artifact.summary.warnings} warnings</Badge>
+              </Group>
+            )}
+            {(artifact.audit?.length ?? 0) > 0 && (
+              <Stack gap={4}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Effective rules</Text>
+                <Group gap="xs">
+                  {artifact.audit?.slice(0, 4).map((entry) => (
+                    <Badge key={`${artifact.id}-${entry.field}-${entry.matchedRule}`} color={entry.action === 'keep' ? 'gray' : entry.action === 'tokenize' ? 'teal' : 'red'} variant="light">
+                      {entry.field}: {entry.action} · {entry.source}
+                    </Badge>
+                  ))}
+                </Group>
+              </Stack>
+            )}
             {(artifact.rawTokenEstimate !== undefined || artifact.compressedTokenEstimate !== undefined) && (
               <Text size="xs" c="dimmed">
                 {artifact.rawTokenEstimate?.toLocaleString() ?? '-'} raw tokens - {artifact.compressedTokenEstimate?.toLocaleString() ?? '-'} compact tokens

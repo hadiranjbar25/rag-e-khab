@@ -231,6 +231,10 @@ Sanitizer modes:
 - **Strict**: adds lower-confidence values such as UUID-like values, IP addresses, and birth-date-like values.
 - **Permissive**: masks high-confidence values but only warns about lower-confidence names and addresses.
 
+Sanitization is profile-driven. RAG-e Khab ships built-in Strict, Balanced, and Developer-friendly profiles, then applies optional project, session, and per-artifact overrides on top. Rules can keep, remove, redact, tokenize, hash, truncate, generalize, or warn for matching fields. Matching is deterministic: explicit artifact rules, session rules, project rules, built-in rules, value detectors, then the profile's unknown-field behavior.
+
+Some built-in rules are hard-blocked. Passwords, access tokens, private keys, card security codes, cookies, API keys, and related secret fields cannot be exposed through MCP even if an override tries to keep them. Agent-facing artifacts include safe metadata only: the effective profile name, action counts, detector/rule explanations, and sanitized content. They never include raw values, token maps, real IDs, private previews, or rejected raw artifacts.
+
 Typical workflow:
 
 1. Create a Safe Debug Session.

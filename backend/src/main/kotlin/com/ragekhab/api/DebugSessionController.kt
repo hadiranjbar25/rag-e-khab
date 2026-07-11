@@ -15,6 +15,7 @@ import com.ragekhab.debug.PromoteDebugMemoryRequest
 import com.ragekhab.debug.RecordAgentRequest
 import com.ragekhab.debug.SanitizeDebugRequest
 import com.ragekhab.debug.SanitizeDebugResponse
+import com.ragekhab.debug.SanitizationProfile
 import com.ragekhab.memory.AgentMemory
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -33,6 +34,10 @@ class DebugSessionController(
     @GetMapping
     fun list(@RequestParam(required = false, defaultValue = "false") includeArchived: Boolean): List<DebugSession> =
         debugSessions.list(includeArchived)
+
+    @GetMapping("/sanitization-profiles")
+    fun sanitizationProfiles(): List<SanitizationProfile> =
+        debugSessions.builtInProfiles()
 
     @PostMapping
     fun create(@RequestBody request: CreateDebugSessionRequest): DebugSession =

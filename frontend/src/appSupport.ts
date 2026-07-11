@@ -247,6 +247,60 @@ export type DebugWarning = {
   count?: number;
 };
 
+export type SanitizationSummary = {
+  kept: number;
+  tokenized: number;
+  redacted: number;
+  removed: number;
+  hashed: number;
+  truncated: number;
+  generalized: number;
+  warnings: number;
+};
+
+export type SanitizationAuditEntry = {
+  field: string;
+  action: 'keep' | 'remove' | 'redact' | 'tokenize' | 'hash' | 'truncate' | 'generalize' | 'warn';
+  matchedRule: string;
+  source: 'built_in' | 'project' | 'session';
+  originalDetectedType?: string;
+  result?: string;
+  blocking: boolean;
+};
+
+export type SanitizationRule = {
+  id: string;
+  enabled: boolean;
+  fieldPattern: string;
+  matchType: 'exact' | 'glob' | 'regex';
+  action: SanitizationAuditEntry['action'];
+  tokenType?: string;
+  priority: number;
+  protection: 'normal' | 'protected' | 'hard_blocked';
+};
+
+export type SensitiveDataDetector = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  action: SanitizationAuditEntry['action'];
+  replacementType?: string;
+};
+
+export type SanitizationProfile = {
+  id: string;
+  name: string;
+  description?: string;
+  scope: 'built_in' | 'project' | 'session';
+  enabled: boolean;
+  defaultAction: SanitizationAuditEntry['action'];
+  unknownFieldBehavior: 'remove' | 'redact' | 'warn' | 'keep';
+  strictMode: boolean;
+  rules: SanitizationRule[];
+  detectors: SensitiveDataDetector[];
+  updatedAt: string;
+};
+
 export type DebugTokenMapping = {
   sessionId: string;
   token: string;
@@ -267,6 +321,11 @@ export type DebugArtifact = {
   rawTokenEstimate?: number;
   compressedTokenEstimate?: number;
   reductionPercent?: number;
+  profileName?: string;
+  publishable?: boolean;
+  summary?: SanitizationSummary;
+  audit?: SanitizationAuditEntry[];
+  sanitizedContent?: string;
   warningSummary: DebugWarning[];
   dataRequestId?: string;
   createdAt: string;
@@ -558,4 +617,3 @@ export function errorMessage(err: unknown, fallback: string): string {
 export function sqlLiteral(value: string): string {
   return /^-?\d+(\.\d+)?$/.test(value) ? value : `'${value.replaceAll("'", "''")}'`;
 }
-

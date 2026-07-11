@@ -13,6 +13,8 @@ import com.ragekhab.document.ArtifactKind
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 @Service
 class DebugSessionService(
@@ -39,6 +41,8 @@ class DebugSessionService(
     fun list(includeArchived: Boolean = false): List<DebugSession> =
         store.listSessions().filter { includeArchived || it.status == DebugSessionStatus.active }
 
+    fun builtInProfiles(): List<SanitizationProfile> = builtInSanitizationProfiles
+
     fun detail(sessionId: UUID): DebugSessionDetail {
         val session = requireSession(sessionId)
         return DebugSessionDetail(
@@ -62,7 +66,8 @@ class DebugSessionService(
     fun sanitize(sessionId: UUID, request: SanitizeDebugRequest): SanitizeDebugResponse {
         requireSession(sessionId)
         val warnings = WarningCollector()
-        val context = SanitizeContext(sessionId, request.sourceName.trim().ifBlank { "custom" }, request.mode, warnings)
+        val profile = effectiveProfile(request)
+        val context = SanitizeContext(sessionId, request.sourceName.trim().ifBlank { "custom" }, request.mode, warnings, profile)
         val sanitized = when (request.inputType) {
             DebugInputType.csv -> sanitizeCsv(request.rawText, context)
             DebugInputType.json -> sanitizeJson(request.rawText, context)
@@ -81,6 +86,10 @@ class DebugSessionService(
                 rawTokenEstimate = compressed.metrics.rawTokenEstimate,
                 compressedTokenEstimate = compressed.metrics.compressedTokenEstimate,
                 reductionPercent = compressed.metrics.reductionPercent,
+                profileName = profile.name,
+                publishable = context.publishable,
+                summary = context.summary(),
+                audit = context.audit.take(MAX_SANITIZATION_AUDIT_ENTRIES),
                 warningSummary = warnings.toList(),
                 dataRequestId = request.dataRequestId,
                 createdAt = now,
@@ -418,11 +427,28 @@ class DebugSessionService(
             DebugInputType.log -> ArtifactKind.LOG
         }
 
-    private fun agentFacingArtifact(artifact: DebugArtifact): DebugArtifact =
-        artifact.compactText
+    private fun agentFacingArtifact(artifact: DebugArtifact): DebugSafeArtifact {
+        val content = artifact.compactText
             ?.takeIf { it.isNotBlank() }
-            ?.let { artifact.copy(sanitizedText = it) }
-            ?: artifact
+            ?: artifact.sanitizedText
+        return DebugSafeArtifact(
+            id = artifact.id,
+            sessionId = artifact.sessionId,
+            inputType = artifact.inputType,
+            sourceName = artifact.sourceName,
+            sanitizedText = content,
+            compactText = artifact.compactText,
+            rawTokenEstimate = artifact.rawTokenEstimate,
+            compressedTokenEstimate = artifact.compressedTokenEstimate,
+            reductionPercent = artifact.reductionPercent,
+            warningSummary = artifact.warningSummary,
+            dataRequestId = artifact.dataRequestId,
+            createdAt = artifact.createdAt,
+            profileName = artifact.profileName,
+            summary = artifact.summary,
+            audit = artifact.audit.filterNot { it.blocking },
+        )
+    }
 
     private fun sanitizeCsv(raw: String, context: SanitizeContext): String {
         val rows = parseCsv(raw)
@@ -543,62 +569,18 @@ class DebugSessionService(
     private fun sanitizeField(field: String, value: String, context: SanitizeContext): String {
         if (value.isBlank()) return value
         val normalized = normalizeFieldName(field)
-        val rule = configuredRules[context.sourceName.lowercase()]?.get(normalized) ?: inferredRule(normalized)
-        if (rule?.keep == true) return value
-        if (rule?.token != null) return tokenFor(context, rule.token, context.sourceName, normalized, value)
-        if (rule?.ref != null) {
-            val (table, column) = rule.ref.split(".", limit = 2).let { it[0] to it.getOrElse(1) { "id" } }
-            return tokenFor(context, tokenPrefixFor(table), table, column, value)
+        if (riskyColumns.any { normalized.contains(it) } && normalized !in hardBlockedFieldNames) {
+            val sanitized = sanitizeFreeText(value, context, field)
+            if (sanitized != value) {
+                val decision = SanitizationDecision(unknownRule(normalized, SanitizationAction.keep), SanitizationAction.keep, SanitizationProfileScope.session, "free_text")
+                context.record(field, decision, sanitized)
+                return sanitized
+            }
         }
-        if (rule?.mask != null) {
-            context.warnings.add(warningTypeForMask(rule.mask), "Detected ${rule.mask.lowercase()} value and replaced it with a token.", field)
-            return tokenFor(context, rule.mask, context.sourceName, normalized, value)
-        }
-
-        when {
-            emailRegex.matches(value) -> {
-                context.warnings.add(DebugWarningType.email, "Detected email address and replaced it with a token.", field)
-                return tokenFor(context, "EMAIL", context.sourceName, normalized.ifBlank { "email" }, value)
-            }
-            phoneRegex.matches(value) -> {
-                context.warnings.add(DebugWarningType.phone, "Detected phone number and replaced it with a token.", field)
-                return tokenFor(context, "PHONE", context.sourceName, normalized.ifBlank { "phone" }, value)
-            }
-            cardRegex.matches(value) -> {
-                context.warnings.add(DebugWarningType.unknown_pii, "Possible payment card value was removed.", field)
-                return tokenFor(context, "UNKNOWN", context.sourceName, normalized.ifBlank { "card" }, value)
-            }
-            ibanRegex.matches(value) -> {
-                context.warnings.add(DebugWarningType.unknown_pii, "Possible IBAN value was removed.", field)
-                return tokenFor(context, "UNKNOWN", context.sourceName, normalized.ifBlank { "iban" }, value)
-            }
-            ssnRegex.matches(value) -> {
-                context.warnings.add(DebugWarningType.unknown_pii, "SSN-like value was removed.", field)
-                return tokenFor(context, "SSN", context.sourceName, normalized.ifBlank { "ssn" }, value)
-            }
-            jwtRegex.matches(value) || apiKeyRegex.matches(value) -> {
-                context.warnings.add(DebugWarningType.unknown_pii, "Secret-like value was removed.", field)
-                return tokenFor(context, "SECRET", context.sourceName, normalized.ifBlank { "secret" }, value)
-            }
-            riskyColumns.any { normalized.contains(it) } -> {
-                context.warnings.add(DebugWarningType.risky_column, "Column may contain sensitive data.", field)
-                val sanitized = sanitizeFreeText(value, context, field)
-                return when {
-                    sanitized != value -> sanitized
-                    context.mode == DebugSanitizerMode.strict -> tokenFor(context, "UNKNOWN", context.sourceName, normalized.ifBlank { "unknown" }, value)
-                    else -> value
-                }
-            }
-            addressRegex.containsMatchIn(value) -> {
-                context.warnings.add(DebugWarningType.address, "Value may contain an address.", field)
-                return tokenFor(context, "ADDRESS", context.sourceName, normalized.ifBlank { "address" }, value)
-            }
-            likelyPersonName(value, normalized) -> {
-                context.warnings.add(DebugWarningType.person_name, "Value may contain a person name.", field)
-                return tokenFor(context, "PERSON", context.sourceName, normalized.ifBlank { "name" }, value)
-            }
-            else -> return value
-        }
+        val decision = decisionFor(normalized, value, context)
+        val result = applyDecision(field, normalized, value, decision, context)
+        context.record(field, decision, result)
+        return result
     }
 
     private fun inferredRule(field: String): FieldRule? {
@@ -614,6 +596,140 @@ class DebugSessionService(
             compact.contains("apikey") || compact.contains("token") || compact.contains("secret") || compact.contains("jwt") -> FieldRule(mask = "SECRET")
             else -> null
         }
+    }
+
+    private fun effectiveProfile(request: SanitizeDebugRequest): SanitizationProfile {
+        val builtIn = when (request.mode) {
+            DebugSanitizerMode.strict -> strictBuiltInProfile
+            DebugSanitizerMode.balanced -> balancedBuiltInProfile
+            DebugSanitizerMode.permissive -> developerBuiltInProfile
+        }
+        val enabledProfiles = listOfNotNull(
+            builtIn,
+            request.projectProfile?.takeIf { it.enabled },
+            request.sessionProfile?.takeIf { it.enabled },
+            request.artifactProfile?.takeIf { it.enabled },
+        )
+        val now = Instant.now()
+        return SanitizationProfile(
+            id = enabledProfiles.joinToString("+") { it.id },
+            name = enabledProfiles.lastOrNull()?.name ?: builtIn.name,
+            description = "Effective Safe Debug sanitization profile",
+            scope = SanitizationProfileScope.session,
+            defaultAction = enabledProfiles.lastOrNull()?.defaultAction ?: builtIn.defaultAction,
+            unknownFieldBehavior = enabledProfiles.lastOrNull()?.unknownFieldBehavior ?: builtIn.unknownFieldBehavior,
+            strictMode = request.mode == DebugSanitizerMode.strict || enabledProfiles.any { it.strictMode },
+            rules = enabledProfiles.flatMap { it.rules },
+            detectors = enabledProfiles.flatMap { it.detectors }.distinctBy { it.id },
+            createdAt = now,
+            updatedAt = now,
+        )
+    }
+
+    private fun decisionFor(field: String, value: String, context: SanitizeContext): SanitizationDecision {
+        val hardBlocked = context.profile.rules
+            .filter { it.enabled && it.protection == BuiltInRuleProtection.hard_blocked && it.matches(context.sourceName, field) }
+            .maxWithOrNull(ruleComparator)
+        if (hardBlocked != null) return SanitizationDecision(hardBlocked, hardBlocked.action, SanitizationProfileScope.built_in, "hard_blocked")
+
+        val matchedRule = context.profile.rules
+            .filter { it.enabled && it.matches(context.sourceName, field) }
+            .maxWithOrNull(ruleComparator)
+        if (matchedRule != null) {
+            val protected = matchedRule.protection == BuiltInRuleProtection.protected && matchedRule.action == SanitizationAction.keep
+            return SanitizationDecision(matchedRule, if (protected) SanitizationAction.warn else matchedRule.action, SanitizationProfileScope.built_in, null)
+        }
+
+        detectorFor(value, context)?.let { detector ->
+            return SanitizationDecision(
+                rule = SanitizationRule(
+                    id = "detector/${detector.id}",
+                    fieldPattern = field.ifBlank { "free_text" },
+                    action = detector.action,
+                    tokenType = detector.replacementType,
+                ),
+                action = detector.action,
+                source = SanitizationProfileScope.built_in,
+                detectedType = detector.replacementType ?: detector.id,
+            )
+        }
+
+        return when (context.profile.unknownFieldBehavior) {
+            UnknownFieldBehavior.remove -> SanitizationDecision(unknownRule(field, SanitizationAction.remove), SanitizationAction.remove, SanitizationProfileScope.session, null)
+            UnknownFieldBehavior.redact -> SanitizationDecision(unknownRule(field, SanitizationAction.redact), SanitizationAction.redact, SanitizationProfileScope.session, null)
+            UnknownFieldBehavior.keep -> SanitizationDecision(unknownRule(field, SanitizationAction.keep), SanitizationAction.keep, SanitizationProfileScope.session, null)
+            UnknownFieldBehavior.warn -> SanitizationDecision(unknownRule(field, SanitizationAction.warn), SanitizationAction.warn, SanitizationProfileScope.session, null)
+        }
+    }
+
+    private fun unknownRule(field: String, action: SanitizationAction): SanitizationRule =
+        SanitizationRule(id = "unknown-field/$field", fieldPattern = field.ifBlank { "unknown" }, action = action)
+
+    private fun detectorFor(value: String, context: SanitizeContext): SensitiveDataDetector? =
+        context.profile.detectors.firstOrNull { detector ->
+            detector.enabled && when (detector.id) {
+                "email-detector" -> emailRegex.matches(value)
+                "phone-detector" -> phoneRegex.matches(value) && !looksLikeTimestamp(value)
+                "ipv4-detector" -> ipRegex.matches(value)
+                "iban-detector" -> ibanRegex.matches(value)
+                "card-detector" -> cardRegex.matches(value)
+                "uuid-detector" -> uuidRegex.matches(value)
+                "jwt-detector" -> jwtRegex.matches(value)
+                "api-key-detector", "bearer-token-detector" -> apiKeyRegex.matches(value)
+                "address-detector" -> addressRegex.containsMatchIn(value)
+                "name-detector" -> likelyPersonName(value, "")
+                else -> detector.pattern?.let { Regex(it).containsMatchIn(value) } ?: false
+            }
+        }
+
+    private fun applyDecision(
+        field: String,
+        normalized: String,
+        value: String,
+        decision: SanitizationDecision,
+        context: SanitizeContext,
+    ): String {
+        if (decision.rule.protection == BuiltInRuleProtection.hard_blocked) {
+            context.publishable = false
+            context.warnings.add(DebugWarningType.unknown_pii, "Hard-blocked secret field was removed.", field)
+            return ""
+        }
+        return when (decision.action) {
+            SanitizationAction.keep -> value
+            SanitizationAction.remove -> ""
+            SanitizationAction.redact -> decision.rule.replacement ?: "[REDACTED]"
+            SanitizationAction.tokenize -> {
+                val tokenType = decision.rule.tokenType
+                    ?: decision.detectedType
+                    ?: if (normalized == "id") tokenPrefixFor(context.sourceName) else tokenPrefixFor(normalized.removeSuffix("_id").ifBlank { normalized })
+                val relation = decision.rule.relation
+                tokenFor(context, tokenType, relation?.entity ?: context.sourceName, relation?.canonicalField ?: normalized.ifBlank { "value" }, value)
+            }
+            SanitizationAction.hash -> hmacToken(context.sessionId, value)
+            SanitizationAction.truncate -> value.take(decision.rule.truncateLength ?: 16)
+            SanitizationAction.generalize -> generalizeValue(value, decision.rule.generalizationStrategy)
+            SanitizationAction.warn -> {
+                context.publishable = false
+                context.warnings.add(warningTypeForMask(decision.detectedType ?: "UNKNOWN"), "Field requires approval before publishing.", field)
+                "[REVIEW_REQUIRED]"
+            }
+        }
+    }
+
+    private fun generalizeValue(value: String, strategy: String?): String =
+        when (strategy) {
+            "date" -> value.take(10)
+            "amount_range" -> value.toDoubleOrNull()?.let { amount ->
+                val floor = (amount / 10).toInt() * 10
+                "$floor-${floor + 10}"
+            } ?: "[GENERALIZED]"
+            else -> "[GENERALIZED]"
+        }
+
+    private fun hmacToken(sessionId: UUID, value: String): String {
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec("rage-khab-safe-debug:$sessionId".toByteArray(), "HmacSHA256"))
+        return mac.doFinal(value.toByteArray()).take(12).joinToString("") { "%02x".format(it) }
     }
 
     private fun tokenFor(context: SanitizeContext, prefix: String, table: String, column: String, realValue: String): String {
@@ -743,13 +859,7 @@ class DebugSessionService(
             .replace(Regex("""[^a-z0-9]+"""), "_")
             .trim('_')
 
-    private fun tokenPrefixFor(table: String): String =
-        when (table.lowercase().trim()) {
-            "users", "user", "customer", "customers" -> "USER"
-            "orders", "order" -> "ORDER"
-            "payments", "payment" -> "PAYMENT"
-            else -> table.uppercase().replace(Regex("""[^A-Z0-9]+"""), "_").trim('_').ifBlank { "UNKNOWN" }
-        }
+    private fun tokenPrefixFor(table: String): String = debugTokenPrefixFor(table)
 
     private fun warningTypeForMask(mask: String): DebugWarningType =
         when (mask.uppercase()) {
@@ -765,6 +875,42 @@ class DebugSessionService(
         val sourceName: String,
         val mode: DebugSanitizerMode,
         val warnings: WarningCollector,
+        val profile: SanitizationProfile,
+        val audit: MutableList<SanitizationAuditEntry> = mutableListOf(),
+        val counts: MutableMap<SanitizationAction, Int> = mutableMapOf(),
+        var publishable: Boolean = true,
+    ) {
+        fun record(field: String, decision: SanitizationDecision, result: String) {
+            counts[decision.action] = (counts[decision.action] ?: 0) + 1
+            audit += SanitizationAuditEntry(
+                field = field,
+                action = decision.action,
+                matchedRule = decision.rule.id,
+                source = decision.source,
+                originalDetectedType = decision.detectedType,
+                result = result.takeIf { it.isNotBlank() && it != "[REVIEW_REQUIRED]" && it != "[REDACTED]" },
+                blocking = decision.rule.protection == BuiltInRuleProtection.hard_blocked || decision.action == SanitizationAction.warn,
+            )
+        }
+
+        fun summary(): SanitizationSummary =
+            SanitizationSummary(
+                kept = counts[SanitizationAction.keep] ?: 0,
+                tokenized = counts[SanitizationAction.tokenize] ?: 0,
+                redacted = counts[SanitizationAction.redact] ?: 0,
+                removed = counts[SanitizationAction.remove] ?: 0,
+                hashed = counts[SanitizationAction.hash] ?: 0,
+                truncated = counts[SanitizationAction.truncate] ?: 0,
+                generalized = counts[SanitizationAction.generalize] ?: 0,
+                warnings = (counts[SanitizationAction.warn] ?: 0) + warnings.toList().sumOf { it.count ?: 1 },
+            )
+    }
+
+    private data class SanitizationDecision(
+        val rule: SanitizationRule,
+        val action: SanitizationAction,
+        val source: SanitizationProfileScope,
+        val detectedType: String?,
     )
 
     private data class FieldRule(
@@ -817,7 +963,127 @@ class DebugSessionService(
         private val sqlRealIdRegex = Regex("""\bwhere\s+[a-z_][a-z0-9_]*\s*=\s*(?:\d+|'[^']+')""", RegexOption.IGNORE_CASE)
         private const val MAX_COMPARISON_LINES = 80
         private const val MAX_COMPARISON_LINE_LENGTH = 500
+        private const val MAX_SANITIZATION_AUDIT_ENTRIES = 200
         private val riskyColumns = listOf("email", "phone", "name", "address", "iban", "card", "ssn", "dob", "birth", "note", "comment", "description", "secret", "token", "api_key")
+        private val ruleComparator = compareBy<SanitizationRule> { it.priority }
+            .thenBy {
+                when (it.matchType) {
+                    SanitizationRuleMatchType.regex -> 0
+                    SanitizationRuleMatchType.glob -> 1
+                    SanitizationRuleMatchType.exact -> 2
+                }
+            }
+
+        private fun SanitizationRule.matches(sourceName: String, field: String): Boolean {
+            if (sourcePattern != null && !globRegex(sourcePattern).matches(sourceName)) return false
+            return when (matchType) {
+                SanitizationRuleMatchType.exact -> fieldPattern.equals(field, ignoreCase = true)
+                SanitizationRuleMatchType.glob -> globRegex(fieldPattern).matches(field)
+                SanitizationRuleMatchType.regex -> Regex(fieldPattern, RegexOption.IGNORE_CASE).matches(field)
+            }
+        }
+
+        private fun globRegex(pattern: String): Regex =
+            Regex("^" + pattern.split('*').joinToString(".*") { Regex.escape(it) } + "$", RegexOption.IGNORE_CASE)
+
+        private fun rule(
+            id: String,
+            pattern: String,
+            action: SanitizationAction,
+            priority: Int,
+            tokenType: String? = null,
+            matchType: SanitizationRuleMatchType = SanitizationRuleMatchType.exact,
+            protection: BuiltInRuleProtection = BuiltInRuleProtection.normal,
+            relation: SanitizationRelation? = null,
+        ) = SanitizationRule(
+            id = id,
+            fieldPattern = pattern,
+            matchType = matchType,
+            action = action,
+            tokenType = tokenType,
+            priority = priority,
+            protection = protection,
+            relation = relation,
+        )
+
+        private fun debugTokenPrefixFor(table: String): String =
+            when (table.lowercase().trim()) {
+                "users", "user", "customer", "customers" -> "USER"
+                "orders", "order" -> "ORDER"
+                "payments", "payment" -> "PAYMENT"
+                else -> table.uppercase().replace(Regex("""[^A-Z0-9]+"""), "_").trim('_').ifBlank { "UNKNOWN" }
+            }
+
+        private val hardBlockedFieldNames = listOf(
+            "password", "password_hash", "secret", "api_key", "access_token", "refresh_token", "authorization",
+            "cookie", "session_cookie", "private_key", "client_secret", "otp", "pin", "cvv", "card_number",
+        )
+
+        private val hardBlockedFieldRules = hardBlockedFieldNames.map { rule("built-in/hard-block/$it", it, SanitizationAction.remove, 10_000, protection = BuiltInRuleProtection.hard_blocked) } +
+            listOf(
+                rule("built-in/hard-block/password-glob", "password*", SanitizationAction.remove, 10_000, matchType = SanitizationRuleMatchType.glob, protection = BuiltInRuleProtection.hard_blocked),
+                rule("built-in/hard-block/token-glob", "*token*", SanitizationAction.remove, 9_900, matchType = SanitizationRuleMatchType.glob, protection = BuiltInRuleProtection.hard_blocked),
+                rule("built-in/hard-block/secret-glob", "*secret*", SanitizationAction.remove, 9_900, matchType = SanitizationRuleMatchType.glob, protection = BuiltInRuleProtection.hard_blocked),
+            )
+
+        private val defaultTokenRules = listOf("id", "user_id", "customer_id", "account_id", "order_id", "payment_id", "shipment_id", "employee_id", "patient_id", "external_id")
+            .map { field -> rule("built-in/token/$field", field, SanitizationAction.tokenize, 900, tokenType = field.takeUnless { it == "id" }?.let { debugTokenPrefixFor(it.removeSuffix("_id")) }) }
+
+        private val defaultPiiRules = listOf("email" to "EMAIL", "name" to "PERSON", "first_name" to "PERSON", "last_name" to "PERSON", "full_name" to "PERSON", "phone" to "PHONE", "mobile" to "PHONE", "address" to "ADDRESS", "street" to "ADDRESS", "postal_code" to "ADDRESS", "iban" to "IBAN", "bank_account" to "BANK", "tax_id" to "TAX", "national_id" to "NATIONAL", "passport" to "PASSPORT", "ip_address" to "IP", "device_id" to "DEVICE")
+            .map { (field, tokenType) -> rule("built-in/pii/$field", field, SanitizationAction.tokenize, 800, tokenType = tokenType) }
+
+        private val defaultKeepRules = listOf("status", "state", "type", "category", "error_code", "error_type", "currency", "country_code", "created_at", "updated_at")
+            .map { rule("built-in/keep/$it", it, SanitizationAction.keep, 500) }
+
+        private val defaultDetectors = listOf(
+            SensitiveDataDetector("email-detector", "Email address", action = SanitizationAction.tokenize, replacementType = "EMAIL"),
+            SensitiveDataDetector("phone-detector", "Phone number", action = SanitizationAction.tokenize, replacementType = "PHONE"),
+            SensitiveDataDetector("ipv4-detector", "IPv4 address", action = SanitizationAction.tokenize, replacementType = "IP"),
+            SensitiveDataDetector("iban-detector", "IBAN", action = SanitizationAction.redact, replacementType = "IBAN"),
+            SensitiveDataDetector("card-detector", "Credit card-like number", action = SanitizationAction.remove, replacementType = "CARD"),
+            SensitiveDataDetector("uuid-detector", "UUID", action = SanitizationAction.tokenize, replacementType = "UUID"),
+            SensitiveDataDetector("jwt-detector", "JWT", action = SanitizationAction.remove, replacementType = "SECRET"),
+            SensitiveDataDetector("api-key-detector", "API key", action = SanitizationAction.remove, replacementType = "SECRET"),
+            SensitiveDataDetector("address-detector", "Postal address", action = SanitizationAction.warn, replacementType = "ADDRESS"),
+            SensitiveDataDetector("name-detector", "Possible person name", action = SanitizationAction.warn, replacementType = "PERSON"),
+        )
+
+        private val strictBuiltInProfile = SanitizationProfile(
+            id = "built-in-strict",
+            name = "Strict",
+            scope = SanitizationProfileScope.built_in,
+            defaultAction = SanitizationAction.remove,
+            unknownFieldBehavior = UnknownFieldBehavior.remove,
+            strictMode = true,
+            rules = hardBlockedFieldRules + defaultTokenRules + defaultPiiRules + defaultKeepRules,
+            detectors = defaultDetectors.map {
+                if (it.action == SanitizationAction.warn) it.copy(action = SanitizationAction.tokenize) else it
+            },
+        )
+
+        private val balancedBuiltInProfile = SanitizationProfile(
+            id = "built-in-balanced",
+            name = "Balanced",
+            scope = SanitizationProfileScope.built_in,
+            defaultAction = SanitizationAction.warn,
+            unknownFieldBehavior = UnknownFieldBehavior.keep,
+            rules = hardBlockedFieldRules + defaultTokenRules + defaultPiiRules + defaultKeepRules,
+            detectors = defaultDetectors,
+        )
+
+        private val developerBuiltInProfile = SanitizationProfile(
+            id = "built-in-developer-friendly",
+            name = "Developer-friendly",
+            scope = SanitizationProfileScope.built_in,
+            defaultAction = SanitizationAction.warn,
+            unknownFieldBehavior = UnknownFieldBehavior.keep,
+            rules = hardBlockedFieldRules + defaultTokenRules + defaultPiiRules + defaultKeepRules,
+            detectors = defaultDetectors.map {
+                if (it.id in setOf("address-detector", "name-detector")) it.copy(action = SanitizationAction.warn) else it
+            },
+        )
+
+        private val builtInSanitizationProfiles = listOf(strictBuiltInProfile, balancedBuiltInProfile, developerBuiltInProfile)
         private val configuredRules = mapOf(
             "users" to mapOf(
                 "id" to FieldRule(token = "USER"),

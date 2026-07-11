@@ -23,6 +23,51 @@ enum class DebugSanitizerMode {
     permissive,
 }
 
+enum class SanitizationAction {
+    keep,
+    remove,
+    redact,
+    tokenize,
+    hash,
+    truncate,
+    generalize,
+    warn,
+}
+
+enum class SanitizationProfileScope {
+    built_in,
+    project,
+    session,
+}
+
+enum class SanitizationRuleMatchType {
+    exact,
+    glob,
+    regex,
+}
+
+enum class SanitizationDataType {
+    string,
+    number,
+    boolean,
+    date,
+    `object`,
+    array,
+}
+
+enum class BuiltInRuleProtection {
+    normal,
+    protected,
+    hard_blocked,
+}
+
+enum class UnknownFieldBehavior {
+    remove,
+    redact,
+    warn,
+    keep,
+}
+
 enum class DebugWarningType(private val wireName: String) {
     email("email"),
     phone("phone"),
@@ -77,9 +122,82 @@ data class DebugArtifact(
     val rawTokenEstimate: Int? = null,
     val compressedTokenEstimate: Int? = null,
     val reductionPercent: Int? = null,
+    val profileName: String = "Balanced",
+    val publishable: Boolean = true,
+    val summary: SanitizationSummary = SanitizationSummary(),
+    val audit: List<SanitizationAuditEntry> = emptyList(),
     val warningSummary: List<DebugWarning>,
     val dataRequestId: UUID? = null,
     val createdAt: Instant,
+)
+
+data class SanitizationSummary(
+    val kept: Int = 0,
+    val tokenized: Int = 0,
+    val redacted: Int = 0,
+    val removed: Int = 0,
+    val hashed: Int = 0,
+    val truncated: Int = 0,
+    val generalized: Int = 0,
+    val warnings: Int = 0,
+)
+
+data class SanitizationAuditEntry(
+    val field: String,
+    val action: SanitizationAction,
+    val matchedRule: String,
+    val source: SanitizationProfileScope,
+    val originalDetectedType: String? = null,
+    val result: String? = null,
+    val blocking: Boolean = false,
+)
+
+data class SanitizationProfile(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val scope: SanitizationProfileScope,
+    val enabled: Boolean = true,
+    val defaultAction: SanitizationAction = SanitizationAction.warn,
+    val unknownFieldBehavior: UnknownFieldBehavior = UnknownFieldBehavior.warn,
+    val strictMode: Boolean = false,
+    val rules: List<SanitizationRule> = emptyList(),
+    val detectors: List<SensitiveDataDetector> = emptyList(),
+    val createdAt: Instant = Instant.now(),
+    val updatedAt: Instant = createdAt,
+)
+
+data class SanitizationRule(
+    val id: String,
+    val enabled: Boolean = true,
+    val sourcePattern: String? = null,
+    val fieldPattern: String,
+    val matchType: SanitizationRuleMatchType = SanitizationRuleMatchType.exact,
+    val dataType: SanitizationDataType? = null,
+    val action: SanitizationAction,
+    val tokenType: String? = null,
+    val replacement: String? = null,
+    val truncateLength: Int? = null,
+    val generalizationStrategy: String? = null,
+    val relation: SanitizationRelation? = null,
+    val priority: Int = 0,
+    val description: String? = null,
+    val protection: BuiltInRuleProtection = BuiltInRuleProtection.normal,
+)
+
+data class SanitizationRelation(
+    val entity: String,
+    val canonicalField: String,
+)
+
+data class SensitiveDataDetector(
+    val id: String,
+    val name: String,
+    val enabled: Boolean = true,
+    val action: SanitizationAction,
+    val pattern: String? = null,
+    val confidenceThreshold: Double? = null,
+    val replacementType: String? = null,
 )
 
 data class DebugWarning(
@@ -126,6 +244,9 @@ data class SanitizeDebugRequest(
     val rawText: String,
     val dataRequestId: UUID? = null,
     val mode: DebugSanitizerMode = DebugSanitizerMode.balanced,
+    val projectProfile: SanitizationProfile? = null,
+    val sessionProfile: SanitizationProfile? = null,
+    val artifactProfile: SanitizationProfile? = null,
 )
 
 data class SanitizeDebugResponse(
@@ -181,10 +302,30 @@ data class PromoteDebugMemoryRequest(
 
 data class DebugSessionContext(
     val session: DebugSession,
-    val artifacts: List<DebugArtifact>,
+    val artifacts: List<DebugSafeArtifact>,
     val tokens: List<DebugSafeToken>,
     val dataRequests: List<DebugSafeDataRequest>,
     val notes: List<DebugNote>,
+)
+
+data class DebugSafeArtifact(
+    val id: UUID,
+    val sessionId: UUID,
+    val inputType: DebugInputType,
+    val sourceName: String,
+    val sanitizedText: String,
+    val compactText: String? = null,
+    val rawTokenEstimate: Int? = null,
+    val compressedTokenEstimate: Int? = null,
+    val reductionPercent: Int? = null,
+    val warningSummary: List<DebugWarning>,
+    val dataRequestId: UUID? = null,
+    val createdAt: Instant,
+    val artifactId: UUID = id,
+    val profileName: String,
+    val sanitizedContent: String = sanitizedText,
+    val summary: SanitizationSummary,
+    val audit: List<SanitizationAuditEntry> = emptyList(),
 )
 
 data class DebugSafeToken(
@@ -210,7 +351,7 @@ data class DebugSafeDataRequest(
 
 data class DebugSessionState(
     val session: DebugSession,
-    val artifacts: List<DebugArtifact>,
+    val artifacts: List<DebugSafeArtifact>,
     val dataRequests: List<DebugSafeDataRequest>,
     val timeline: List<DebugAuditEvent>,
     val notes: List<DebugNote>,

@@ -81,6 +81,35 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
               </Paper>
             </SimpleGrid>
 
+            <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
+              <Group justify="space-between" align="center">
+                <Stack gap={2}>
+                  <Title order={2} size="h4">Sanitization Profiles</Title>
+                  <Text size="sm" c="dimmed">Built-in profiles are secure by default. Artifact summaries show the effective profile and matched rule sources.</Text>
+                </Stack>
+                <Badge color="teal" variant="light">{app.sanitizationProfiles.length || 3} profiles</Badge>
+              </Group>
+              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+                {(app.sanitizationProfiles.length ? app.sanitizationProfiles : [
+                  { id: 'strict', name: 'Strict', scope: 'built_in', enabled: true, unknownFieldBehavior: 'remove', rules: [], detectors: [] },
+                  { id: 'balanced', name: 'Balanced', scope: 'built_in', enabled: true, unknownFieldBehavior: 'warn', rules: [], detectors: [] },
+                  { id: 'developer', name: 'Developer-friendly', scope: 'built_in', enabled: true, unknownFieldBehavior: 'warn', rules: [], detectors: [] },
+                ]).map((profile) => (
+                  <Paper component={Stack} gap="xs" key={profile.id} p="sm" radius="sm" withBorder>
+                    <Group justify="space-between" align="flex-start">
+                      <Text fw={700}>{profile.name}</Text>
+                      <Badge color={profile.name === 'Balanced' ? 'teal' : 'gray'} variant="light">{profile.scope.replace('_', ' ')}</Badge>
+                    </Group>
+                    <Text size="xs" c="dimmed">Unknown fields: {profile.unknownFieldBehavior}</Text>
+                    <Group gap="xs">
+                      <Badge color="gray" variant="light">{profile.rules.length} rules</Badge>
+                      <Badge color="gray" variant="light">{profile.detectors.length} detectors</Badge>
+                    </Group>
+                  </Paper>
+                ))}
+              </SimpleGrid>
+            </Paper>
+
             {debugDetail ? (
               <Stack gap="md">
                 <Paper p="md" radius="sm" withBorder>
