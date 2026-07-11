@@ -70,6 +70,40 @@ class ContextOptimizerServiceTest {
     }
 
     @Test
+    fun `budget profile sets effective max tokens when no explicit budget is provided`() {
+        val retrieval = FakeModeOptimizer(ContextOptimizerMode.Retrieval, "retrieval-only")
+        val service = ContextOptimizerService(
+            settingsService = RuntimeSettingsService(
+                RagEKhabProperties(optimizer = RagEKhabProperties.Optimizer(mode = "retrieval", maxTokens = 3_000)),
+                testStateStore(),
+            ),
+            optimizers = listOf(retrieval),
+        )
+
+        val result = service.optimize(ContextOptimizationRequest(task = "Inspect auth flow", budgetProfile = "deep"))
+
+        assertEquals(6_000, retrieval.lastRequest?.maxTokens)
+        assertEquals("deep", result.budgetProfile)
+    }
+
+    @Test
+    fun `explicit max tokens wins over budget profile`() {
+        val retrieval = FakeModeOptimizer(ContextOptimizerMode.Retrieval, "retrieval-only")
+        val service = ContextOptimizerService(
+            settingsService = RuntimeSettingsService(
+                RagEKhabProperties(optimizer = RagEKhabProperties.Optimizer(mode = "retrieval", maxTokens = 3_000)),
+                testStateStore(),
+            ),
+            optimizers = listOf(retrieval),
+        )
+
+        val result = service.optimize(ContextOptimizationRequest(task = "Inspect auth flow", maxTokens = 900, budgetProfile = "deep"))
+
+        assertEquals(900, retrieval.lastRequest?.maxTokens)
+        assertEquals("custom", result.budgetProfile)
+    }
+
+    @Test
     fun `compression service does not call local llm when disabled`() {
         val compression = ContextCompressionService(
             properties = RagEKhabProperties(localLlm = RagEKhabProperties.LocalLlm(enabled = false)),
@@ -123,9 +157,11 @@ class ContextOptimizerServiceTest {
         private val compressionLabel: String,
     ) : ModeAwareContextOptimizer {
         var calls = 0
+        var lastRequest: ContextOptimizationRequest? = null
 
         override fun optimize(request: ContextOptimizationRequest): OptimizedContext {
             calls += 1
+            lastRequest = request
             return optimized(compressionLabel)
         }
     }

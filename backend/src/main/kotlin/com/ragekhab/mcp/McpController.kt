@@ -194,6 +194,7 @@ class McpController(
                     maxTokens = arguments["maxTokens"]?.toString()?.toIntOrNull(),
                     candidateLimit = arguments["candidateLimit"]?.toString()?.toIntOrNull() ?: 30,
                     targetTokens = arguments["targetTokens"]?.toString()?.toIntOrNull(),
+                    budgetProfile = arguments["budgetProfile"]?.toString(),
                 ),
             )
             "ask_knowledge_base" -> chatService.ask(arguments["question"].toString(), arguments["limit"]?.toString()?.toIntOrNull() ?: 8, projectId)
@@ -236,7 +237,7 @@ class McpController(
         tool("list_debug_data_requests", "List Safe Debug data request statuses and sanitized request summaries for a session. Does not return real IDs or SQL.", mapOf("sessionId" to "string")),
         tool("get_debug_session_state", "Return sanitized Safe Debug artifacts, request summaries, timeline, and notes. Does not return raw data, token real values, or real SQL.", mapOf("sessionId" to "string")),
         tool("get_debug_artifact_slice", "Explicit expansion: return an inclusive sanitized raw artifact line slice from a Safe Debug Session.", mapOf("sessionId" to "string", "artifactId" to "string", "beforeLine" to "number", "afterLine" to "number")),
-        tool("optimize_context", "Return the smallest useful coding-agent context needed to complete a task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
+        tool("optimize_context", "Return the smallest useful coding-agent context needed to complete a task, including token savings.", mapOf("task" to "string", "maxTokens" to "number", "budgetProfile" to "string", "repository" to "string", "module" to "string", "projectId" to "string")),
         tool("ask_knowledge_base", "Ask a question and receive an answer with sources, optionally within a project.", mapOf("question" to "string", "limit" to "number", "projectId" to "string")),
         tool("list_documents", "List uploaded documents, optionally within a project.", mapOf("projectId" to "string")),
         tool("get_document", "Return document metadata and chunks.", mapOf("id" to "string")),

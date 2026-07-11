@@ -138,6 +138,7 @@ type OptimizedContext = {
     targetTokens: number;
   };
   compression?: string;
+  budgetProfile?: string;
 };
 
 type ContextPreviewItem = {
@@ -192,6 +193,7 @@ type RuntimeSettings = {
   optimizer: {
     mode: string;
     maxTokens: number;
+    budgetProfile: string;
   };
   localLlm: {
     enabled: boolean;
@@ -418,6 +420,12 @@ const DISABLED_MODEL = '__disabled__';
 const chatModelOptions = ['llama3.1', 'qwen2.5:7b', 'mistral', 'codellama'];
 const compressionModelOptions = ['qwen2.5:7b', 'llama3.1', 'mistral'];
 const embeddingModelOptions = ['nomic-embed-text', 'bge-m3'];
+const contextBudgetProfiles = [
+  { value: 'small', label: 'Small', maxTokens: 1200, description: 'Focused context for narrow edits.' },
+  { value: 'standard', label: 'Standard', maxTokens: 3000, description: 'Default context for normal coding tasks.' },
+  { value: 'deep', label: 'Deep', maxTokens: 6000, description: 'Broader context for refactors and unfamiliar code.' },
+];
+const contextBudgetProfileOptions = contextBudgetProfiles.map((profile) => ({ value: profile.value, label: profile.label }));
 const memoryTypes = ['ArchitectureDecision', 'CodingConvention', 'BugFix', 'Pattern', 'ProjectKnowledge', 'DomainKnowledge', 'TechnicalDebt'];
 const memoryLabels: Record<string, string> = {
   ArchitectureDecision: 'Architecture',
@@ -436,6 +444,7 @@ const taskTemplates = [
     description: 'Find failure context, likely owner code, related tests, and prior bug lessons.',
     task: 'Fix a bug. Include the failing behavior, likely affected module, relevant tests, previous bug-fix memories, and the smallest code context needed to make the change safely.',
     maxTokens: 3000,
+    budgetProfile: 'standard',
   },
   {
     value: 'add-endpoint',
@@ -443,6 +452,7 @@ const taskTemplates = [
     description: 'Pull controller, service, DTO, validation, API conventions, and tests.',
     task: 'Add a new API endpoint. Include controller conventions, service flow, DTO/entity naming patterns, validation rules, error handling style, and related endpoint tests.',
     maxTokens: 4500,
+    budgetProfile: 'deep',
   },
   {
     value: 'ui-change',
@@ -450,6 +460,7 @@ const taskTemplates = [
     description: 'Focus on frontend components, design-system usage, routes, and state.',
     task: 'Implement a UI change. Include relevant React components, Mantine design-system patterns, route/state handling, accessibility concerns, and nearby UI tests or build constraints.',
     maxTokens: 3000,
+    budgetProfile: 'standard',
   },
   {
     value: 'refactor',
@@ -457,6 +468,7 @@ const taskTemplates = [
     description: 'Prioritize dependencies, contracts, callers, tests, and behavior risks.',
     task: 'Refactor existing code without changing behavior. Include dependency chains, public contracts, callers, related tests, conventions, and known risks.',
     maxTokens: 6000,
+    budgetProfile: 'deep',
   },
   {
     value: 'safe-debug',
@@ -464,6 +476,7 @@ const taskTemplates = [
     description: 'Use sanitized artifacts, compact logs, token mappings, and data requests.',
     task: 'Debug a production-like issue using Safe Debug only. Include compact sanitized artifacts, exception and failed-request clues, tokenized identifiers, related memories, and any small sanitized slices needed.',
     maxTokens: 4500,
+    budgetProfile: 'deep',
   },
 ];
 
@@ -646,6 +659,7 @@ export default function App() {
   const [task, setTask] = useState('');
   const [selectedTaskTemplate, setSelectedTaskTemplate] = useState('');
   const [optimizerTokenBudget, setOptimizerTokenBudget] = useState(3000);
+  const [optimizerBudgetProfile, setOptimizerBudgetProfile] = useState('standard');
   const [optimizedContext, setOptimizedContext] = useState<OptimizedContext | null>(null);
   const [history, setHistory] = useState<ConversationTurn[]>([]);
   const [activeSource, setActiveSource] = useState<SearchResult | null>(null);
@@ -750,8 +764,9 @@ export default function App() {
   useEffect(() => {
     if (settingsDraft?.optimizer.maxTokens) {
       setOptimizerTokenBudget(settingsDraft.optimizer.maxTokens);
+      setOptimizerBudgetProfile(settingsDraft.optimizer.budgetProfile ?? 'standard');
     }
-  }, [settingsDraft?.optimizer.maxTokens]);
+  }, [settingsDraft?.optimizer.budgetProfile, settingsDraft?.optimizer.maxTokens]);
 
   const totalChunks = documents.reduce((sum, doc) => sum + doc.chunkCount, 0);
   const tokenSavings = optimizedContext ? (optimizedContext.tokenSavings?.savedTokens ?? Math.max(0, totalChunks * 650 - optimizedContext.estimatedTokens)) : 0;
@@ -780,6 +795,7 @@ export default function App() {
     : activeWorkspaceHealth.status === 'review'
       ? 'Needs review'
       : 'Setup needed';
+  const currentBudgetProfile = contextBudgetProfiles.find((profile) => profile.value === optimizerBudgetProfile);
 
   const stats = useMemo(() => [
     { label: 'Repositories', value: projectRepositories.length, detail: 'linked to this workspace', icon: Network, tone: 'purple' },
@@ -982,6 +998,7 @@ export default function App() {
     if (!template) return;
     setTask(template.task);
     setOptimizerTokenBudget(template.maxTokens);
+    setOptimizerBudgetProfile(template.budgetProfile);
   };
 
   const optimizeContext = async () => {
@@ -996,7 +1013,10 @@ export default function App() {
         body: JSON.stringify({
           task: prompt,
           projectId: selectedProjectId || undefined,
-          maxTokens: Math.max(300, Math.min(8000, Math.floor(optimizerTokenBudget || settingsDraft?.optimizer.maxTokens || 3000)))
+          budgetProfile: optimizerBudgetProfile !== 'custom' ? optimizerBudgetProfile : undefined,
+          maxTokens: optimizerBudgetProfile === 'custom'
+            ? Math.max(300, Math.min(8000, Math.floor(optimizerTokenBudget || settingsDraft?.optimizer.maxTokens || 3000)))
+            : undefined
         })
       });
       setOptimizedContext(response);
@@ -2502,7 +2522,22 @@ export default function App() {
                   </Text>
                 </Paper>
               )}
-	              <Textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Add pagination to Orders API" minRows={7} autosize />
+              <Textarea value={task} onChange={(event) => setTask(event.target.value)} placeholder="Add pagination to Orders API" minRows={7} autosize />
+              <Stack gap="xs">
+                <SegmentedControl
+                  value={optimizerBudgetProfile}
+                  onChange={(value) => {
+                    setOptimizerBudgetProfile(value);
+                    const profile = contextBudgetProfiles.find((item) => item.value === value);
+                    if (profile) setOptimizerTokenBudget(profile.maxTokens);
+                  }}
+                  data={[
+                    ...contextBudgetProfileOptions,
+                    { value: 'custom', label: 'Custom' },
+                  ]}
+                />
+                <Text size="sm" c="dimmed">{currentBudgetProfile?.description ?? 'Use a custom token budget for this run.'}</Text>
+              </Stack>
               <Group align="end" gap="sm">
                 <NumberInput
                   label="Token budget"
@@ -2510,7 +2545,10 @@ export default function App() {
                   max={8000}
                   step={500}
                   value={optimizerTokenBudget}
-                  onChange={(value) => setOptimizerTokenBudget(Number(value) || 300)}
+                  onChange={(value) => {
+                    setOptimizerBudgetProfile('custom');
+                    setOptimizerTokenBudget(Number(value) || 300);
+                  }}
                 />
                 <Button onClick={optimizeContext} disabled={busy || !task.trim()} leftSection={<Sparkles size={18} />}>Optimize context</Button>
               </Group>
@@ -2521,7 +2559,7 @@ export default function App() {
                 </Box>
                 <Box>
                   <Text size="xs" fw={700} tt="uppercase" c="dimmed">Default budget</Text>
-                  <Text fw={700}>{settingsDraft?.optimizer.maxTokens ?? 3000} tokens</Text>
+                  <Text fw={700}>{settingsDraft?.optimizer.budgetProfile ?? 'standard'} · {settingsDraft?.optimizer.maxTokens ?? 3000} tokens</Text>
                 </Box>
               </SimpleGrid>
             </Paper>
@@ -2529,7 +2567,7 @@ export default function App() {
             <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
               {optimizedContext ? (
                 <>
-                  <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                  <SimpleGrid cols={{ base: 1, sm: 4 }} spacing="sm">
                     <Box>
                       <Text size="xs" fw={700} tt="uppercase" c="dimmed">Token estimate</Text>
                       <Text fw={700}>{optimizedContext.estimatedTokens.toLocaleString()} tokens</Text>
@@ -2541,6 +2579,10 @@ export default function App() {
                     <Box>
                       <Text size="xs" fw={700} tt="uppercase" c="dimmed">Sources</Text>
                       <Text fw={700}>{optimizedContext.sources.length}</Text>
+                    </Box>
+                    <Box>
+                      <Text size="xs" fw={700} tt="uppercase" c="dimmed">Budget</Text>
+                      <Text fw={700}>{optimizedContext.budgetProfile ?? optimizerBudgetProfile}</Text>
                     </Box>
                   </SimpleGrid>
                   <Stack gap={4}>
@@ -2747,6 +2789,22 @@ export default function App() {
                         { value: 'retrieval', label: 'Retrieval only' },
                         { value: 'compression', label: 'Compression', disabled: !settingsDraft.localLlm.enabled },
                       ]}
+                    />
+                    <NativeSelect
+                      label="Default budget profile"
+                      value={settingsDraft.optimizer.budgetProfile ?? 'standard'}
+                      onChange={(event) => {
+                        const profile = contextBudgetProfiles.find((item) => item.value === event.target.value);
+                        setSettingsDraft({
+                          ...settingsDraft,
+                          optimizer: {
+                            ...settingsDraft.optimizer,
+                            budgetProfile: event.target.value,
+                            maxTokens: profile?.maxTokens ?? settingsDraft.optimizer.maxTokens
+                          }
+                        });
+                      }}
+                      data={contextBudgetProfileOptions}
                     />
                     <NumberInput
                       label="Optimizer max tokens"

@@ -14,7 +14,8 @@ class ContextOptimizerService(
 
     override fun optimize(request: ContextOptimizationRequest): OptimizedContext {
         val settings = settingsService.current()
-        val maxTokens = (request.maxTokens ?: request.targetTokens ?: settings.optimizer.maxTokens).coerceIn(300, 8_000)
+        val budget = budgetFor(request, settings.optimizer.maxTokens, settings.optimizer.budgetProfile)
+        val effectiveRequest = request.copy(maxTokens = budget.maxTokens)
         val candidateLimit = (request.candidateLimit ?: 30).coerceIn(8, 30)
         val cacheKey = listOf(
             selectedMode().name,
@@ -23,17 +24,31 @@ class ContextOptimizerService(
             request.module.orEmpty(),
             request.projectId.orEmpty(),
             candidateLimit.toString(),
-            maxTokens.toString(),
+            budget.maxTokens.toString(),
+            budget.profile.orEmpty(),
         ).joinToString("|")
 
-        cache[cacheKey]?.takeIf { it.estimatedTokens <= maxTokens }?.let { return it.copy(cacheHit = true) }
+        cache[cacheKey]?.takeIf { it.estimatedTokens <= budget.maxTokens }?.let { return it.copy(cacheHit = true) }
 
         val result = when (selectedMode()) {
-            ContextOptimizerMode.Retrieval -> optimizer(ContextOptimizerMode.Retrieval).optimize(request)
-            ContextOptimizerMode.Compression -> optimizer(ContextOptimizerMode.Compression).optimize(request)
-        }
+            ContextOptimizerMode.Retrieval -> optimizer(ContextOptimizerMode.Retrieval).optimize(effectiveRequest)
+            ContextOptimizerMode.Compression -> optimizer(ContextOptimizerMode.Compression).optimize(effectiveRequest)
+        }.copy(budgetProfile = budget.profile)
         remember(cacheKey, result)
         return result
+    }
+
+    private fun budgetFor(request: ContextOptimizationRequest, defaultTokens: Int, defaultProfile: String): EffectiveBudget {
+        val explicit = request.maxTokens ?: request.targetTokens
+        if (explicit != null) return EffectiveBudget(explicit.coerceIn(300, 8_000), "custom")
+
+        val profile = ContextBudgetProfiles.resolve(request.budgetProfile)
+            ?: ContextBudgetProfiles.resolve(defaultProfile)
+        return if (profile != null) {
+            EffectiveBudget(profile.maxTokens, profile.name)
+        } else {
+            EffectiveBudget(defaultTokens.coerceIn(300, 8_000), "custom")
+        }
     }
 
     private fun selectedMode(): ContextOptimizerMode =
@@ -56,6 +71,11 @@ class ContextOptimizerService(
             .sorted()
             .joinToString("-")
             .take(160)
+
+    private data class EffectiveBudget(
+        val maxTokens: Int,
+        val profile: String?,
+    )
 }
 
 @Service

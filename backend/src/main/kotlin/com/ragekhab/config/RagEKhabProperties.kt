@@ -35,6 +35,7 @@ data class RagEKhabProperties(
     data class Optimizer(
         val mode: String = "retrieval",
         val maxTokens: Int = 3_000,
+        val budgetProfile: String = "standard",
     )
 
     data class Qdrant(

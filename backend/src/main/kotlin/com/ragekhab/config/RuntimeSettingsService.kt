@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicReference
 data class OptimizerRuntimeSettings(
     val mode: String,
     val maxTokens: Int,
+    val budgetProfile: String = "standard",
 )
 
 data class LlmRuntimeSettings(
@@ -80,10 +81,14 @@ class RuntimeSettingsService(
                 )
             } ?: current.localLlm
             val optimizer = request.optimizer?.let {
+                val budgetProfile = it.budgetProfile.trim().lowercase().takeIf { profile ->
+                    profile in setOf("small", "standard", "deep")
+                } ?: "standard"
                 OptimizerRuntimeSettings(
                     mode = it.mode.trim().lowercase().takeIf { mode -> mode in setOf("retrieval", "compression") }
                         ?: error("Optimizer mode must be retrieval or compression."),
                     maxTokens = it.maxTokens.coerceIn(300, 8_000),
+                    budgetProfile = budgetProfile,
                 )
             } ?: current.optimizer
             require(optimizer.mode != "compression" || localLlm.enabled) {
@@ -132,6 +137,7 @@ class RuntimeSettingsService(
             optimizer = OptimizerRuntimeSettings(
                 mode = properties.optimizer.mode,
                 maxTokens = properties.optimizer.maxTokens,
+                budgetProfile = properties.optimizer.budgetProfile,
             ),
             localLlm = LocalLlmRuntimeSettings(
                 enabled = properties.localLlm.enabled,
