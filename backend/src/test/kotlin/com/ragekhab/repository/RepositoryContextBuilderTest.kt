@@ -21,7 +21,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class RepositoryContextPackageServiceTest {
+class RepositoryContextBuilderTest {
     @Test
     fun `relevance ranking puts task-matching supplier classes first`() {
         val fixture = contextFixture()
@@ -184,7 +184,13 @@ class RepositoryContextPackageServiceTest {
         val metadataStore = RepositoryMetadataStore(state)
         val documentRepository = DocumentRepository(state)
         val memoryStore = RepositoryMemoryStore(state)
-        val service = RepositoryContextPackageService(metadataStore, documentRepository, memoryStore)
+        val service = RepositoryContextBuilder(
+            metadataStore,
+            documentRepository,
+            memoryStore,
+            SourceSymbolExtractor(),
+            SourceSnippetCompressor(),
+        )
         listOf(
             "src/main/java/com/example/supplier/SupplierController.java" to """
                 package com.example.supplier;
@@ -247,7 +253,13 @@ class RepositoryContextPackageServiceTest {
         val metadataStore = RepositoryMetadataStore(state)
         val documentRepository = DocumentRepository(state)
         val memoryStore = RepositoryMemoryStore(state)
-        val service = RepositoryContextPackageService(metadataStore, documentRepository, memoryStore)
+        val service = RepositoryContextBuilder(
+            metadataStore,
+            documentRepository,
+            memoryStore,
+            SourceSymbolExtractor(),
+            SourceSnippetCompressor(),
+        )
         listOf(
             "frontend/src/invoice/InvoiceService.ts" to """
                 export class InvoiceService {
@@ -348,7 +360,7 @@ class RepositoryContextPackageServiceTest {
         }
 
     private data class ContextFixture(
-        val service: RepositoryContextPackageService,
+        val service: RepositoryContextBuilder,
     )
 
     private class FakeVectorIndex : VectorIndex {

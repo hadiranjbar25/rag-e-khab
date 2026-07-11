@@ -161,7 +161,8 @@ Useful options:
 Language support:
 
 - Indexed repository knowledge: Kotlin, Java, JavaScript, TypeScript, Python, Go, Rust, Ruby, PHP, C#, C/C++, Swift, Scala, SQL, YAML, JSON, XML, Markdown, README.md, AGENTS.md, and CLAUDE.md.
-- Deeper symbol summaries: Java/Kotlin classes and methods, plus common function/method declarations in JavaScript, TypeScript, Python, Go, Rust, Ruby, PHP, C#, C/C++, Swift, and Scala.
+- Deeper symbol summaries: Tree-sitter parses Java, Kotlin, JavaScript, TypeScript, Python, Go, Rust, Ruby, PHP, C#, C/C++, Swift, and Scala to extract class/function summaries and source-snippet ranges.
+- Fallback text patterns are used only when a parser is unavailable or cannot load.
 - Raw source is still returned only when explicitly requested through source-snippet context.
 
 ## MCP Setup

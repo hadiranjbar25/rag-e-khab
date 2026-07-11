@@ -16,7 +16,7 @@ The synced context includes repository maps, module summaries, source declaratio
 
 The backend also exposes context package APIs that default to summaries and only return raw snippets when explicitly requested.
 
-Repository scans index common source and config formats across Kotlin, Java, JavaScript, TypeScript, Python, Go, Rust, Ruby, PHP, C#, C/C++, Swift, Scala, SQL, YAML, JSON, XML, and Markdown. Context packages extract richer class/function summaries for Java/Kotlin and common declaration forms in the other supported source languages. This keeps the compact context useful for polyglot repositories without introducing full language-specific AST parsers for every language.
+Repository scans index common source and config formats across Kotlin, Java, JavaScript, TypeScript, Python, Go, Rust, Ruby, PHP, C#, C/C++, Swift, Scala, SQL, YAML, JSON, XML, and Markdown. Context packages use Tree-sitter parsers for supported source languages to extract class/function summaries and source-snippet ranges. Lightweight text patterns remain as a fallback when a parser is unavailable or cannot load.
 
 ## Consequences
 

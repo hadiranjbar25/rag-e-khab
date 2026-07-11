@@ -9,10 +9,12 @@ import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.math.ceil
 
 @Service
-class RepositoryContextPackageService(
+class RepositoryContextBuilder(
     private val metadataStore: RepositoryMetadataStore,
     private val documentRepository: DocumentRepository,
     private val memoryStore: RepositoryMemoryStore,
+    private val symbolExtractor: SourceSymbolExtractor,
+    private val snippetCompressor: SourceSnippetCompressor,
 ) {
     fun buildContextPackage(request: ContextRequest): ContextPackage {
         val repository = request.repositoryName()
@@ -143,7 +145,8 @@ class RepositoryContextPackageService(
 
     private fun classInfo(metadata: RepositoryFileMetadata, source: String): ClassInfo {
         val fileName = metadata.filePath.substringAfterLast('/').substringBeforeLast('.')
-        val className = declarationName(source) ?: fileName
+        val symbols = symbolExtractor.extract(metadata.language, source)
+        val className = symbols.primaryDeclaration ?: fileName
         val packageName = packageRegex.find(source)?.groupValues?.get(1)
             ?: metadata.filePath.substringBeforeLast('/', "").replace('/', '.')
         return ClassInfo(
@@ -152,7 +155,7 @@ class RepositoryContextPackageService(
             className = className,
             packageName = packageName,
             role = roleFor(className, source, metadata.filePath),
-            publicMethods = publicMethods(source),
+            publicMethods = symbols.publicMethods,
             imports = importRegex.findAll(source).map { it.groupValues[1].substringAfterLast('.') }.toSet(),
             isTest = className.endsWith("Test") || "/test/" in metadata.filePath || metadata.filePath.contains("src/test"),
         )
@@ -248,54 +251,23 @@ class RepositoryContextPackageService(
         return targets.mapNotNull { metadata ->
             val source = sources[metadata].orEmpty()
             if (source.isBlank()) return@mapNotNull null
-            snippetFor(metadata.filePath, source, spec)
+            snippetFor(metadata, source, spec)
         }
     }
 
-    private fun snippetFor(path: String, source: String, spec: SourceSnippetRequest): SourceSnippet {
+    private fun snippetFor(metadata: RepositoryFileMetadata, source: String, spec: SourceSnippetRequest): SourceSnippet {
         val lines = source.lines()
         val range = if (spec.method != null) {
-            methodRange(lines, spec.method)
+            symbolExtractor.methodRange(metadata.language, source, spec.method)
+                ?: (1 to minOf(lines.size.coerceAtLeast(1), DEFAULT_SNIPPET_LINE_COUNT))
         } else {
             val start = (spec.startLine ?: 1).coerceIn(1, lines.size.coerceAtLeast(1))
-            val end = (spec.endLine ?: (start + 40)).coerceIn(start, lines.size.coerceAtLeast(start))
+            val end = (spec.endLine ?: (start + DEFAULT_SNIPPET_LINE_COUNT)).coerceIn(start, lines.size.coerceAtLeast(start))
             start to end
         }
-        val text = lines.subList(range.first - 1, range.second).joinToString("\n").compressSource()
-        return SourceSnippet(path, range.first, range.second, text)
+        val text = snippetCompressor.compress(lines.subList(range.first - 1, range.second).joinToString("\n"))
+        return SourceSnippet(metadata.filePath, range.first, range.second, text)
     }
-
-    private fun methodRange(lines: List<String>, method: String): Pair<Int, Int> {
-        val startIndex = lines.indexOfFirst { Regex("""\b${Regex.escape(method)}\s*\(""").containsMatchIn(it) }
-            .takeIf { it >= 0 }
-            ?: 0
-        var balance = 0
-        var seenBrace = false
-        for (index in startIndex until lines.size) {
-            val line = lines[index]
-            balance += line.count { it == '{' }
-            if ('{' in line) seenBrace = true
-            balance -= line.count { it == '}' }
-            if (seenBrace && balance <= 0) return startIndex + 1 to index + 1
-            if (!seenBrace && index > startIndex && methodStartRegex.containsMatchIn(line)) return startIndex + 1 to index
-        }
-        return startIndex + 1 to minOf(lines.size, startIndex + 40)
-    }
-
-    private fun publicMethods(source: String): List<String> {
-        return methodRegexes.asSequence()
-            .flatMap { regex -> regex.findAll(source).map { it.groupValues[1] } }
-            .filterNot { it in ignoredMethodNames }
-            .filterNot { it in languageKeywords }
-            .distinct()
-            .take(20)
-            .toList()
-    }
-
-    private fun declarationName(source: String): String? =
-        declarationRegexes.asSequence()
-            .mapNotNull { regex -> regex.find(source)?.groupValues?.get(1) }
-            .firstOrNull()
 
     private fun roleFor(className: String, source: String, path: String): String =
         when {
@@ -380,18 +352,6 @@ class RepositoryContextPackageService(
         return terms.any { lowercase().contains(it) }
     }
 
-    private fun String.compressSource(): String =
-        lines()
-            .filterNot { it.trim().startsWith("import ") }
-            .joinToString("\n")
-            .replace(blockCommentRegex, "")
-            .lines()
-            .filterNot { it.trim().startsWith("//") }
-            .filterNot { simpleGetterSetterRegex.containsMatchIn(it.trim()) }
-            .joinToString("\n")
-            .replace(Regex("""\n{3,}"""), "\n\n")
-            .trim()
-
     private fun <T> List<T>.takeWhileBudget(cost: (T) -> Int, budget: Int): List<T> {
         var remaining = budget
         val output = mutableListOf<T>()
@@ -422,38 +382,9 @@ class RepositoryContextPackageService(
     )
 
     private companion object {
+        const val DEFAULT_SNIPPET_LINE_COUNT = 40
         val packageRegex = Regex("""(?m)^\s*package\s+([A-Za-z0-9_.]+)""")
         val importRegex = Regex("""(?m)^\s*import\s+([A-Za-z0-9_.*]+)""")
-        val declarationRegexes = listOf(
-            Regex("""(?m)^\s*(?:export\s+|public\s+|internal\s+|private\s+|protected\s+|abstract\s+|data\s+|sealed\s+|final\s+|open\s+)*(?:class|interface|enum|object|record|struct|trait|type)\s+([A-Za-z_][A-Za-z0-9_]*)"""),
-            Regex("""(?m)^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_][A-Za-z0-9_]*)\s*=>"""),
-            Regex("""(?m)^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\b"""),
-        )
-        val methodRegexes = listOf(
-            Regex("""(?m)^\s*(?:public|protected)\s+(?:static\s+)?[A-Za-z0-9_<>, ?\[\].]+\s+([a-zA-Z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*(?:public\s+|private\s+|protected\s+|internal\s+|override\s+|suspend\s+|inline\s+|operator\s+)*fun\s+([a-zA-Z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_][A-Za-z0-9_]*)\s*=>"""),
-            Regex("""(?m)^\s*(?:public|private|protected|static|async|readonly|\s)+([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*(?::\s*[A-Za-z0-9_<>, \[\]|.?]+)?\s*\{"""),
-            Regex("""(?m)^\s{2,}([A-Za-z_][A-Za-z0-9_]*)\s*\([^)]*\)\s*(?::\s*[A-Za-z0-9_<>, \[\]|.?]+)?\s*\{"""),
-            Regex("""(?m)^\s*(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\b"""),
-            Regex("""(?m)^\s*(?:public|protected|private|static|async|override|virtual|sealed|extern|\s)+[A-Za-z0-9_<>, ?\[\].*&:]+\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-            Regex("""(?m)^\s*(?:func|mutating\s+func|static\s+func)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\("""),
-        )
-        val methodStartRegex = Regex("""^\s*(?:public|protected|private|internal|override|static|async|function|const|let|var|fun|def|func|pub\s+fn|fn)\b""")
-        val blockCommentRegex = Regex("""(?s)/\*.*?\*/""")
-        val simpleGetterSetterRegex = Regex("""^(?:public\s+)?[A-Za-z0-9_<>, ?\[\].]+\s+(?:get|set|is)[A-Z][A-Za-z0-9_]*\s*\([^)]*\)\s*\{?\s*(?:return\s+[^;]+;?)?\s*}?\s*$""")
-        val ignoredMethodNames = setOf("equals", "hashCode", "toString")
-        val languageKeywords = setOf(
-            "if", "for", "while", "switch", "catch", "return", "new", "class", "interface", "constructor",
-        )
         val stopWords = setOf("add", "the", "and", "for", "with", "from", "this", "that", "into", "validation")
     }
 }

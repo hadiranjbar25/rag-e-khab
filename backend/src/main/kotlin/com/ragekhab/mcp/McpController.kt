@@ -21,7 +21,7 @@ import com.ragekhab.project.ProjectService
 import com.ragekhab.repository.ContextLevel
 import com.ragekhab.repository.ContextRequest
 import com.ragekhab.repository.RepositoryAgentService
-import com.ragekhab.repository.RepositoryContextPackageService
+import com.ragekhab.repository.RepositoryContextBuilder
 import com.ragekhab.repository.RepositoryScanRequest
 import com.ragekhab.search.SemanticSearchService
 import com.fasterxml.jackson.annotation.JsonInclude
@@ -46,7 +46,7 @@ class McpController(
     private val optimizerService: ContextOptimizerService,
     private val memoryService: MemoryService,
     private val repositoryAgent: RepositoryAgentService,
-    private val contextPackages: RepositoryContextPackageService,
+    private val contextPackages: RepositoryContextBuilder,
     private val documentService: DocumentService,
     private val artifactService: ArtifactService,
     private val projectService: ProjectService,
