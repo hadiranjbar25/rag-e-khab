@@ -168,6 +168,10 @@ export function useRageKhabAppModel() {
   const [debugTokenSearch, setDebugTokenSearch] = useState('');
   const [agentRequestDraft, setAgentRequestDraft] = useState('');
   const [repositoryToLink, setRepositoryToLink] = useState('');
+  const [repositorySearch, setRepositorySearch] = useState('');
+  const [repositoryPage, setRepositoryPage] = useState(1);
+  const [repositoryPageSize, setRepositoryPageSize] = useState(9);
+  const [repositoryFilesExpanded, setRepositoryFilesExpanded] = useState(false);
   const [deleteRepositoryKnowledge, setDeleteRepositoryKnowledge] = useState(false);
   const [memoryFilter, setMemoryFilter] = useState<string>('all');
   const [memorySearch, setMemorySearch] = useState('');
@@ -322,6 +326,32 @@ export function useRageKhabAppModel() {
   const tokenSavings = optimizedContext ? (optimizedContext.tokenSavings?.savedTokens ?? Math.max(0, totalChunks * 650 - optimizedContext.estimatedTokens)) : 0;
   const lastSync = repositoryStatus?.lastIndexedAt ?? repositoryStatus?.repositories.find((repo) => repo.lastIndexedAt)?.lastIndexedAt;
   const linkedRepositoryIds = new Set(projectRepositories.map((repository) => repository.id));
+  const repositoryCards = useMemo<RepositoryItem[]>(() => {
+    const catalog = repositories.length > 0 ? repositories : (repositoryStatus?.repositories ?? []).map((repo) => ({
+      id: repo.repositoryId,
+      name: repo.repository,
+      path: repo.repositoryRoot,
+      language: repo.language,
+      lastSyncedAt: repo.lastIndexedAt,
+      status: repo.status,
+    }));
+    return [...catalog].sort((a, b) => a.name.localeCompare(b.name));
+  }, [repositories, repositoryStatus?.repositories]);
+  const filteredRepositories = useMemo(() => {
+    const query = repositorySearch.trim().toLowerCase();
+    if (!query) return repositoryCards;
+    return repositoryCards.filter((repository) =>
+      [repository.name, repository.path, repository.language, repository.status]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [repositoryCards, repositorySearch]);
+  const repositoryPageCount = Math.max(1, Math.ceil(filteredRepositories.length / repositoryPageSize));
+  const normalizedRepositoryPage = Math.min(repositoryPage, repositoryPageCount);
+  const repositoryPageStart = (normalizedRepositoryPage - 1) * repositoryPageSize;
+  const pagedRepositories = filteredRepositories.slice(repositoryPageStart, repositoryPageStart + repositoryPageSize);
+  const repositoryRangeStart = filteredRepositories.length === 0 ? 0 : repositoryPageStart + 1;
+  const repositoryRangeEnd = Math.min(repositoryPageStart + repositoryPageSize, filteredRepositories.length);
   const discoveredFiles = useMemo(() => [...(repositoryStatus?.files ?? [])]
     .sort((a, b) => {
       if (a.deleted !== b.deleted) return a.deleted ? 1 : -1;
@@ -429,6 +459,14 @@ export function useRageKhabAppModel() {
   useEffect(() => {
     if (memoryPage > memoryPageCount) setMemoryPage(memoryPageCount);
   }, [memoryPage, memoryPageCount]);
+
+  useEffect(() => {
+    setRepositoryPage(1);
+  }, [repositorySearch, repositoryPageSize, repositoryCards.length]);
+
+  useEffect(() => {
+    if (repositoryPage > repositoryPageCount) setRepositoryPage(repositoryPageCount);
+  }, [repositoryPage, repositoryPageCount]);
 
   useEffect(() => {
     setRepositoryFilePage(1);
@@ -1148,6 +1186,14 @@ export function useRageKhabAppModel() {
     setAgentRequestDraft,
     repositoryToLink,
     setRepositoryToLink,
+    repositorySearch,
+    setRepositorySearch,
+    repositoryPage,
+    setRepositoryPage,
+    repositoryPageSize,
+    setRepositoryPageSize,
+    repositoryFilesExpanded,
+    setRepositoryFilesExpanded,
     deleteRepositoryKnowledge,
     setDeleteRepositoryKnowledge,
     memoryFilter,
@@ -1217,6 +1263,14 @@ export function useRageKhabAppModel() {
     tokenSavings,
     lastSync,
     linkedRepositoryIds,
+    repositoryCards,
+    filteredRepositories,
+    repositoryPageCount,
+    normalizedRepositoryPage,
+    repositoryPageStart,
+    pagedRepositories,
+    repositoryRangeStart,
+    repositoryRangeEnd,
     discoveredFiles,
     repositoryFilePageCount,
     normalizedRepositoryFilePage,

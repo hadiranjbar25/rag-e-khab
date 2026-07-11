@@ -14,6 +14,8 @@ import { WorkspacesPage } from './pages/WorkspacesPage';
 import type { RageKhabAppModel } from './useRageKhabAppModel';
 
 export function renderRageKhabApp(app: RageKhabAppModel) {
+  const showPageHeader = app.view !== 'repositories';
+
   return (
     <AppShell navbar={{ width: 280, breakpoint: 'sm' }} padding="lg">
       <LoadingOverlay visible={app.busy} overlayProps={{ radius: 'sm', blur: 1 }} />
@@ -32,7 +34,7 @@ export function renderRageKhabApp(app: RageKhabAppModel) {
 
       <AppShell.Main>
         <Stack gap="lg">
-          <PageHeader title={app.pageTitles[app.view]} description={app.pageCopy[app.view]} />
+          {showPageHeader && <PageHeader title={app.pageTitles[app.view]} description={app.pageCopy[app.view]} />}
           {app.busy && <Progress value={38} animated color="teal" aria-label="Working" />}
           {app.error && <Alert color="red" icon={<AlertCircle size={18} />}>{app.error}</Alert>}
           <ActivePage app={app} />

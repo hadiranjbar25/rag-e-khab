@@ -81,35 +81,6 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
               </Paper>
             </SimpleGrid>
 
-            <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
-              <Group justify="space-between" align="center">
-                <Stack gap={2}>
-                  <Title order={2} size="h4">Sanitization Profiles</Title>
-                  <Text size="sm" c="dimmed">Built-in profiles are secure by default. Artifact summaries show the effective profile and matched rule sources.</Text>
-                </Stack>
-                <Badge color="teal" variant="light">{app.sanitizationProfiles.length || 3} profiles</Badge>
-              </Group>
-              <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
-                {(app.sanitizationProfiles.length ? app.sanitizationProfiles : [
-                  { id: 'strict', name: 'Strict', scope: 'built_in', enabled: true, unknownFieldBehavior: 'remove', rules: [], detectors: [] },
-                  { id: 'balanced', name: 'Balanced', scope: 'built_in', enabled: true, unknownFieldBehavior: 'warn', rules: [], detectors: [] },
-                  { id: 'developer', name: 'Developer-friendly', scope: 'built_in', enabled: true, unknownFieldBehavior: 'warn', rules: [], detectors: [] },
-                ]).map((profile) => (
-                  <Paper component={Stack} gap="xs" key={profile.id} p="sm" radius="sm" withBorder>
-                    <Group justify="space-between" align="flex-start">
-                      <Text fw={700}>{profile.name}</Text>
-                      <Badge color={profile.name === 'Balanced' ? 'teal' : 'gray'} variant="light">{profile.scope.replace('_', ' ')}</Badge>
-                    </Group>
-                    <Text size="xs" c="dimmed">Unknown fields: {profile.unknownFieldBehavior}</Text>
-                    <Group gap="xs">
-                      <Badge color="gray" variant="light">{profile.rules.length} rules</Badge>
-                      <Badge color="gray" variant="light">{profile.detectors.length} detectors</Badge>
-                    </Group>
-                  </Paper>
-                ))}
-              </SimpleGrid>
-            </Paper>
-
             {debugDetail ? (
               <Stack gap="md">
                 <Paper p="md" radius="sm" withBorder>
@@ -126,10 +97,15 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                   </Group>
                 </Paper>
 
-                <Tabs defaultValue="workspace" keepMounted={false}>
+                <Tabs defaultValue="data" keepMounted={false}>
                   <Tabs.List>
-                    <Tabs.Tab value="workspace">Workspace</Tabs.Tab>
+                    <Tabs.Tab value="data">Data</Tabs.Tab>
+                    <Tabs.Tab value="requests">Requests</Tabs.Tab>
+                    <Tabs.Tab value="tokens">Tokens</Tabs.Tab>
+                    <Tabs.Tab value="lessons">Lessons</Tabs.Tab>
+                    <Tabs.Tab value="artifacts">Artifacts</Tabs.Tab>
                     <Tabs.Tab value="instruction">Agent instruction</Tabs.Tab>
+                    <Tabs.Tab value="profiles">Profiles</Tabs.Tab>
                   </Tabs.List>
 
                   <Tabs.Panel value="instruction" pt="md">
@@ -144,46 +120,8 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                     </Paper>
                   </Tabs.Panel>
 
-                  <Tabs.Panel value="workspace" pt="md">
+                  <Tabs.Panel value="data" pt="md">
                     <Stack gap="md">
-                      <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
-                        <Group justify="space-between" align="center">
-                          <Title order={2} size="h4">Pending agent requests</Title>
-                          <Badge color="gray" variant="light">{pendingDebugRequests.length} pending</Badge>
-                        </Group>
-                        <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
-                          {debugDetail.dataRequests.map((item) => {
-                            const mapping = tokenMappingFor(item.parentToken);
-                            const suggestedSql = suggestedSqlFor(item);
-                            return (
-                              <Paper component={Stack} gap="sm" key={item.id} p="md" radius="sm" withBorder>
-                                <Group justify="space-between" align="flex-start">
-                                  <Stack gap={2} miw={0}>
-                                    <Text fw={700}>{item.entity}</Text>
-                                    <Text size="sm" c="dimmed">{item.relation || 'No relation'}{item.parentToken ? ` · ${item.parentToken}` : ''}</Text>
-                                  </Stack>
-                                  <Badge color={item.status === 'pending' ? 'green' : 'gray'} variant="light">{item.status}</Badge>
-                                </Group>
-                                <Text size="sm">{item.reason}</Text>
-                                {item.requestedFields.length > 0 && <Text size="xs" c="dimmed">Fields: {item.requestedFields.join(', ')}</Text>}
-                                {mapping && <Text size="xs" c="dimmed">{item.parentToken} -&gt; {mapping.table}.{mapping.column} = {mapping.realValue}</Text>}
-                                {suggestedSql && (
-                                  <Paper component="pre" p="sm" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
-                                    {suggestedSql}
-                                  </Paper>
-                                )}
-                                <Group gap="sm">
-                                  <Button variant="subtle" color="gray" onClick={() => copyDebugText(suggestedSql)} disabled={!suggestedSql} leftSection={<Copy size={16} />}>Copy SQL</Button>
-                                  <Button variant="light" color="teal" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</Button>
-                                  <Button variant="light" color="red" onClick={() => updateDebugDataRequest(item.id, 'reject')} disabled={busy || item.status !== 'pending'}>Reject</Button>
-                                </Group>
-                              </Paper>
-                            );
-                          })}
-                          {debugDetail.dataRequests.length === 0 && <Text c="dimmed">No structured agent data requests yet.</Text>}
-                        </SimpleGrid>
-                      </Paper>
-
                       <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
                         <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
                           <Group justify="space-between" align="center">
@@ -237,8 +175,72 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                           </Paper>
                         </Paper>
                       </SimpleGrid>
+                    </Stack>
+                  </Tabs.Panel>
 
-                      <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
+                  <Tabs.Panel value="requests" pt="md">
+                    <Stack gap="md">
+                      <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
+                        <Group justify="space-between" align="center">
+                          <Title order={2} size="h4">Pending agent requests</Title>
+                          <Badge color="gray" variant="light">{pendingDebugRequests.length} pending</Badge>
+                        </Group>
+                        <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="md">
+                          {debugDetail.dataRequests.map((item) => {
+                            const mapping = tokenMappingFor(item.parentToken);
+                            const suggestedSql = suggestedSqlFor(item);
+                            return (
+                              <Paper component={Stack} gap="sm" key={item.id} p="md" radius="sm" withBorder>
+                                <Group justify="space-between" align="flex-start">
+                                  <Stack gap={2} miw={0}>
+                                    <Text fw={700}>{item.entity}</Text>
+                                    <Text size="sm" c="dimmed">{item.relation || 'No relation'}{item.parentToken ? ` · ${item.parentToken}` : ''}</Text>
+                                  </Stack>
+                                  <Badge color={item.status === 'pending' ? 'green' : 'gray'} variant="light">{item.status}</Badge>
+                                </Group>
+                                <Text size="sm">{item.reason}</Text>
+                                {item.requestedFields.length > 0 && <Text size="xs" c="dimmed">Fields: {item.requestedFields.join(', ')}</Text>}
+                                {mapping && <Text size="xs" c="dimmed">{item.parentToken} -&gt; {mapping.table}.{mapping.column} = {mapping.realValue}</Text>}
+                                {suggestedSql && (
+                                  <Paper component="pre" p="sm" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
+                                    {suggestedSql}
+                                  </Paper>
+                                )}
+                                <Group gap="sm">
+                                  <Button variant="subtle" color="gray" onClick={() => copyDebugText(suggestedSql)} disabled={!suggestedSql} leftSection={<Copy size={16} />}>Copy SQL</Button>
+                                  <Button variant="light" color="teal" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</Button>
+                                  <Button variant="light" color="red" onClick={() => updateDebugDataRequest(item.id, 'reject')} disabled={busy || item.status !== 'pending'}>Reject</Button>
+                                </Group>
+                              </Paper>
+                            );
+                          })}
+                          {debugDetail.dataRequests.length === 0 && <Text c="dimmed">No structured agent data requests yet.</Text>}
+                        </SimpleGrid>
+                      </Paper>
+                      <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
+                        <Group justify="space-between" align="center">
+                          <Title order={2} size="h4">Agent requests</Title>
+                          <Badge color="gray" variant="light">{debugDetail.notes.length}</Badge>
+                        </Group>
+                        <Group align="end" gap="sm" grow>
+                          <TextInput value={agentRequestDraft} onChange={(event) => setAgentRequestDraft(event.target.value)} placeholder="Need orders for USER_001" />
+                          <Button onClick={recordAgentRequest} disabled={busy || !agentRequestDraft.trim()}>Record</Button>
+                        </Group>
+                        <Stack gap="sm">
+                          {debugDetail.notes.slice(0, 4).map((note) => (
+                            <Paper component={Stack} gap={2} key={note.id} p="sm" radius="sm" withBorder>
+                              <Text fw={700}>{note.request}</Text>
+                              <Text size="xs" c="dimmed">{new Date(note.createdAt).toLocaleString()}</Text>
+                            </Paper>
+                          ))}
+                          {debugDetail.notes.length === 0 && <Text c="dimmed">No agent requests recorded yet.</Text>}
+                        </Stack>
+                      </Paper>
+                    </Stack>
+                  </Tabs.Panel>
+
+                  <Tabs.Panel value="tokens" pt="md">
+                    <Stack gap="md">
                         <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
                           <Group justify="space-between" align="center">
                             <Title order={2} size="h4">Resolve token</Title>
@@ -258,64 +260,6 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                             <Text size="sm" c="dimmed">Resolve a token to manually query the database without asking an agent for raw data.</Text>
                           )}
                         </Paper>
-
-                        <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
-                          <Group justify="space-between" align="center">
-                            <Title order={2} size="h4">Agent requests</Title>
-                            <Badge color="gray" variant="light">{debugDetail.notes.length}</Badge>
-                          </Group>
-                          <Group align="end" gap="sm" grow>
-                            <TextInput value={agentRequestDraft} onChange={(event) => setAgentRequestDraft(event.target.value)} placeholder="Need orders for USER_001" />
-                            <Button onClick={recordAgentRequest} disabled={busy || !agentRequestDraft.trim()}>Record</Button>
-                          </Group>
-                          <Stack gap="sm">
-                            {debugDetail.notes.slice(0, 4).map((note) => (
-                              <Paper component={Stack} gap={2} key={note.id} p="sm" radius="sm" withBorder>
-                                <Text fw={700}>{note.request}</Text>
-                                <Text size="xs" c="dimmed">{new Date(note.createdAt).toLocaleString()}</Text>
-                              </Paper>
-                            ))}
-                          </Stack>
-                        </Paper>
-                      </SimpleGrid>
-
-                      <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
-                        <Group justify="space-between" align="flex-start">
-                          <Stack gap={2}>
-                            <Title order={2} size="h4">Promote lesson to memory</Title>
-                            <Text size="sm" c="dimmed">Save only durable, sanitized conclusions. Tokens, raw IDs, PII, and SQL with real IDs are blocked.</Text>
-                            <Badge color="teal" variant="light">Scope: {selectedProject?.name ?? 'selected workspace'}</Badge>
-                          </Stack>
-                          <Brain size={18} />
-                        </Group>
-                        {debugMemorySuggestions.length > 0 && (
-                          <Stack gap="sm">
-                            <Group justify="space-between" align="center">
-                              <Text fw={700}>Suggested lessons</Text>
-                              <Badge color="teal" variant="light">{debugMemorySuggestions.length}</Badge>
-                            </Group>
-                            {debugMemorySuggestions.map((suggestion) => (
-                              <Paper component={Stack} gap="xs" key={suggestion.id} p="sm" radius="sm" withBorder>
-                                <Group justify="space-between" align="flex-start">
-                                  <Stack gap={2} miw={0}>
-                                    <Text size="sm">{suggestion.content}</Text>
-                                    <Text size="xs" c="dimmed">{memoryLabels[suggestion.type] ?? suggestion.type} · {suggestion.reason}</Text>
-                                  </Stack>
-                                  <Button size="xs" variant="light" color="teal" onClick={() => applyDebugMemorySuggestion(suggestion)}>Use</Button>
-                                </Group>
-                              </Paper>
-                            ))}
-                          </Stack>
-                        )}
-                        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
-                          <NativeSelect value={debugMemoryTypeDraft} onChange={(event) => setDebugMemoryTypeDraft(event.target.value)} data={memoryTypes.map((type) => ({ value: type, label: memoryLabels[type] ?? type }))} />
-                          <TextInput value={debugMemoryRepositoryDraft} onChange={(event) => setDebugMemoryRepositoryDraft(event.target.value)} placeholder="repository optional" />
-                          <TextInput value={debugMemoryModuleDraft} onChange={(event) => setDebugMemoryModuleDraft(event.target.value)} placeholder="module optional" />
-                          <NumberInput min={0} max={1} step={0.05} value={debugMemoryConfidenceDraft} onChange={(value) => setDebugMemoryConfidenceDraft(Number(value) || 0)} />
-                          <Textarea style={wideGridItemStyle} value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." minRows={4} autosize />
-                          <Button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim() || !selectedProjectId} leftSection={<Brain size={18} />}>Promote</Button>
-                        </SimpleGrid>
-                      </Paper>
 
                       <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
                         <Group justify="space-between" align="center">
@@ -348,8 +292,51 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                         </ScrollArea>
                         {filteredDebugMappings.length === 0 && <Text c="dimmed">No token mappings yet.</Text>}
                       </Paper>
+                    </Stack>
+                  </Tabs.Panel>
 
-                      <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
+                  <Tabs.Panel value="lessons" pt="md">
+                    <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
+                      <Group justify="space-between" align="flex-start">
+                        <Stack gap={2}>
+                          <Title order={2} size="h4">Promote lesson to memory</Title>
+                          <Text size="sm" c="dimmed">Save only durable, sanitized conclusions. Tokens, raw IDs, PII, and SQL with real IDs are blocked.</Text>
+                          <Badge color="teal" variant="light">Scope: {selectedProject?.name ?? 'selected workspace'}</Badge>
+                        </Stack>
+                        <Brain size={18} />
+                      </Group>
+                      {debugMemorySuggestions.length > 0 && (
+                        <Stack gap="sm">
+                          <Group justify="space-between" align="center">
+                            <Text fw={700}>Suggested lessons</Text>
+                            <Badge color="teal" variant="light">{debugMemorySuggestions.length}</Badge>
+                          </Group>
+                          {debugMemorySuggestions.map((suggestion) => (
+                            <Paper component={Stack} gap="xs" key={suggestion.id} p="sm" radius="sm" withBorder>
+                              <Group justify="space-between" align="flex-start">
+                                <Stack gap={2} miw={0}>
+                                  <Text size="sm">{suggestion.content}</Text>
+                                  <Text size="xs" c="dimmed">{memoryLabels[suggestion.type] ?? suggestion.type} · {suggestion.reason}</Text>
+                                </Stack>
+                                <Button size="xs" variant="light" color="teal" onClick={() => applyDebugMemorySuggestion(suggestion)}>Use</Button>
+                              </Group>
+                            </Paper>
+                          ))}
+                        </Stack>
+                      )}
+                      <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                        <NativeSelect value={debugMemoryTypeDraft} onChange={(event) => setDebugMemoryTypeDraft(event.target.value)} data={memoryTypes.map((type) => ({ value: type, label: memoryLabels[type] ?? type }))} />
+                        <TextInput value={debugMemoryRepositoryDraft} onChange={(event) => setDebugMemoryRepositoryDraft(event.target.value)} placeholder="repository optional" />
+                        <TextInput value={debugMemoryModuleDraft} onChange={(event) => setDebugMemoryModuleDraft(event.target.value)} placeholder="module optional" />
+                        <NumberInput min={0} max={1} step={0.05} value={debugMemoryConfidenceDraft} onChange={(value) => setDebugMemoryConfidenceDraft(Number(value) || 0)} />
+                        <Textarea style={wideGridItemStyle} value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." minRows={4} autosize />
+                        <Button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim() || !selectedProjectId} leftSection={<Brain size={18} />}>Promote</Button>
+                      </SimpleGrid>
+                    </Paper>
+                  </Tabs.Panel>
+
+                  <Tabs.Panel value="artifacts" pt="md">
+                    <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
                         <SafeDebugArtifactsPanel
                           artifacts={debugDetail.artifacts}
                           busy={busy}
@@ -388,7 +375,37 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                           </Stack>
                         </Paper>
                       </SimpleGrid>
-                    </Stack>
+                  </Tabs.Panel>
+
+                  <Tabs.Panel value="profiles" pt="md">
+                    <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
+                      <Group justify="space-between" align="center">
+                        <Stack gap={2}>
+                          <Title order={2} size="h4">Sanitization profiles</Title>
+                          <Text size="sm" c="dimmed">Built-in profiles are secure by default. Artifact summaries show the effective profile and matched rule sources.</Text>
+                        </Stack>
+                        <Badge color="teal" variant="light">{app.sanitizationProfiles.length || 3} profiles</Badge>
+                      </Group>
+                      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+                        {(app.sanitizationProfiles.length ? app.sanitizationProfiles : [
+                          { id: 'strict', name: 'Strict', scope: 'built_in', enabled: true, unknownFieldBehavior: 'remove', rules: [], detectors: [] },
+                          { id: 'balanced', name: 'Balanced', scope: 'built_in', enabled: true, unknownFieldBehavior: 'warn', rules: [], detectors: [] },
+                          { id: 'developer', name: 'Developer-friendly', scope: 'built_in', enabled: true, unknownFieldBehavior: 'warn', rules: [], detectors: [] },
+                        ]).map((profile) => (
+                          <Paper component={Stack} gap="xs" key={profile.id} p="sm" radius="sm" withBorder>
+                            <Group justify="space-between" align="flex-start">
+                              <Text fw={700}>{profile.name}</Text>
+                              <Badge color={profile.name === 'Balanced' ? 'teal' : 'gray'} variant="light">{profile.scope.replace('_', ' ')}</Badge>
+                            </Group>
+                            <Text size="xs" c="dimmed">Unknown fields: {profile.unknownFieldBehavior}</Text>
+                            <Group gap="xs">
+                              <Badge color="gray" variant="light">{profile.rules.length} rules</Badge>
+                              <Badge color="gray" variant="light">{profile.detectors.length} detectors</Badge>
+                            </Group>
+                          </Paper>
+                        ))}
+                      </SimpleGrid>
+                    </Paper>
                   </Tabs.Panel>
                 </Tabs>
               </Stack>
