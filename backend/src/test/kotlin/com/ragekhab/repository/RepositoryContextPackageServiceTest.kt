@@ -102,6 +102,47 @@ class RepositoryContextPackageServiceTest {
     }
 
     @Test
+    fun `context summaries extract declarations and functions for more languages`() {
+        val fixture = multiLanguageFixture()
+
+        val result = fixture.service.buildContextPackage(
+            ContextRequest(repoId = "polyglot-service", task = "render invoice validation and sync", maxTokens = 6_000),
+        )
+
+        val summaries = result.relevantClasses.associateBy { it.className }
+        assertTrue("InvoiceService" in summaries)
+        assertTrue("InvoiceAnalyzer" in summaries)
+        assertTrue("SyncInvoice" in summaries)
+        assertTrue("validate_invoice" in summaries)
+        assertTrue("renderInvoice" in summaries.getValue("InvoiceService").publicMethods)
+        assertTrue("normalizeInvoice" in summaries.getValue("InvoiceService").publicMethods)
+        assertTrue("analyze_invoice" in summaries.getValue("InvoiceAnalyzer").publicMethods)
+        assertTrue("SyncInvoice" in summaries.getValue("SyncInvoice").publicMethods)
+        assertTrue("validate_invoice" in summaries.getValue("validate_invoice").publicMethods)
+    }
+
+    @Test
+    fun `source snippet can be extracted for python functions`() {
+        val fixture = multiLanguageFixture()
+
+        val result = fixture.service.buildContextPackage(
+            ContextRequest(
+                repoId = "polyglot-service",
+                task = "Inspect invoice analyzer",
+                maxTokens = 6_000,
+                includeRawSource = true,
+                className = "InvoiceAnalyzer",
+                method = "analyze_invoice",
+            ),
+        )
+
+        val snippet = result.sourceSnippets.single()
+        assertEquals("services/invoice_analyzer.py", snippet.filePath)
+        assertTrue("analyze_invoice" in snippet.text)
+        assertFalse("helper_not_requested" in snippet.text)
+    }
+
+    @Test
     fun `repository scan is incremental for unchanged changed and deleted files`() {
         val state = testStateStore()
         val documentRepository = DocumentRepository(state)
@@ -201,22 +242,67 @@ class RepositoryContextPackageServiceTest {
         return ContextFixture(service)
     }
 
+    private fun multiLanguageFixture(): ContextFixture {
+        val state = testStateStore()
+        val metadataStore = RepositoryMetadataStore(state)
+        val documentRepository = DocumentRepository(state)
+        val memoryStore = RepositoryMemoryStore(state)
+        val service = RepositoryContextPackageService(metadataStore, documentRepository, memoryStore)
+        listOf(
+            "frontend/src/invoice/InvoiceService.ts" to """
+                export class InvoiceService {
+                  renderInvoice(invoice: Invoice): string {
+                    return this.normalizeInvoice(invoice).id;
+                  }
+                  private normalizeInvoice(invoice: Invoice): Invoice {
+                    return invoice;
+                  }
+                }
+                export const formatInvoice = (invoice: Invoice) => invoice.id;
+            """.trimIndent(),
+            "services/invoice_analyzer.py" to """
+                class InvoiceAnalyzer:
+                    def analyze_invoice(self, invoice):
+                        return invoice.total
+
+                    def helper_not_requested(self):
+                        return "noise"
+            """.trimIndent(),
+            "cmd/invoice/sync.go" to """
+                package invoice
+
+                func SyncInvoice(invoice Invoice) error {
+                    return nil
+                }
+            """.trimIndent(),
+            "src/invoice_validator.rs" to """
+                pub fn validate_invoice(invoice: Invoice) -> bool {
+                    invoice.total > 0
+                }
+            """.trimIndent(),
+        ).forEach { (path, source) ->
+            saveRepoFile(metadataStore, documentRepository, path, source, repository = "polyglot-service")
+        }
+        return ContextFixture(service)
+    }
+
     private fun saveRepoFile(
         metadataStore: RepositoryMetadataStore,
         documentRepository: DocumentRepository,
         path: String,
         source: String,
+        repository: String = "supplier-service",
     ) {
-        val documentId = UUID.nameUUIDFromBytes("supplier-service:$path".toByteArray())
+        val documentId = UUID.nameUUIDFromBytes("$repository:$path".toByteArray())
         val now = Instant.parse("2026-07-05T12:00:00Z")
         metadataStore.save(
             RepositoryFileMetadata(
                 documentId = documentId,
-                repository = "supplier-service",
-                repositoryRoot = "agent:supplier-service",
+                repository = repository,
+                repositoryRoot = "agent:$repository",
                 filePath = path,
                 module = path.split('/').first(),
-                language = "java",
+                language = languageForPath(path),
                 lastModifiedAt = now,
                 sizeBytes = source.length.toLong(),
                 contentHash = documentId.toString(),
@@ -228,7 +314,7 @@ class RepositoryContextPackageServiceTest {
                 id = documentId,
                 projectId = ProjectRepository.DEFAULT_PROJECT_ID,
                 projectName = ProjectRepository.DEFAULT_PROJECT_NAME,
-                name = "supplier-service/$path",
+                name = "$repository/$path",
                 format = DocumentFormat.TEXT,
                 contentType = "text/plain",
                 sizeBytes = source.length.toLong(),
@@ -241,13 +327,25 @@ class RepositoryContextPackageServiceTest {
                     projectId = ProjectRepository.DEFAULT_PROJECT_ID,
                     projectName = ProjectRepository.DEFAULT_PROJECT_NAME,
                     documentId = documentId,
-                    documentName = "supplier-service/$path",
+                    documentName = "$repository/$path",
                     pageNumber = null,
                     text = source,
                 ),
             ),
         )
     }
+
+    private fun languageForPath(path: String): String =
+        when (path.substringAfterLast('.', "")) {
+            "kt", "kts" -> "kotlin"
+            "java" -> "java"
+            "js", "jsx" -> "javascript"
+            "ts", "tsx" -> "typescript"
+            "py" -> "python"
+            "go" -> "go"
+            "rs" -> "rust"
+            else -> "text"
+        }
 
     private data class ContextFixture(
         val service: RepositoryContextPackageService,

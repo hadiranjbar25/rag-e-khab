@@ -158,6 +158,12 @@ Useful options:
 
 `--profile claude`, `--profile compact`, and `--profile agent` are accepted as compatibility aliases. Compact agent context is always used.
 
+Language support:
+
+- Indexed repository knowledge: Kotlin, Java, JavaScript, TypeScript, Python, Go, Rust, Ruby, PHP, C#, C/C++, Swift, Scala, SQL, YAML, JSON, XML, Markdown, README.md, AGENTS.md, and CLAUDE.md.
+- Deeper symbol summaries: Java/Kotlin classes and methods, plus common function/method declarations in JavaScript, TypeScript, Python, Go, Rust, Ruby, PHP, C#, C/C++, Swift, and Scala.
+- Raw source is still returned only when explicitly requested through source-snippet context.
+
 ## MCP Setup
 
 RAG-e Khab exposes HTTP MCP at:
