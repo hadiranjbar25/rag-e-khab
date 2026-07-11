@@ -14,7 +14,7 @@ RAG-e Khab is designed for Codex, Claude Code, Cursor, Gemini CLI, and other MCP
 
 ## Features
 
-- **Knowledge base**: upload files, add text notes, search, and chat with cited sources.
+- **Knowledge base**: upload PDFs, Word documents, slide decks, spreadsheets, HTML, Markdown, and text notes; search and chat with cited sources.
 - **Workspace health**: see whether a workspace has enough sources, memories, fresh repository context, and current guidance for coding agents.
 - **Project memory**: store architecture decisions, conventions, bug fixes, patterns, domain knowledge, and technical debt.
 - **Stale memory detection**: flag repository-scoped memories when related indexed files changed after the memory was saved.

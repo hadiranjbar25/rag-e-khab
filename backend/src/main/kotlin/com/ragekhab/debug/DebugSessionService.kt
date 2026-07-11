@@ -10,7 +10,10 @@ import com.ragekhab.memory.MemoryService
 import com.ragekhab.memory.MemoryType
 import com.ragekhab.memory.RememberRequest
 import com.ragekhab.document.ArtifactKind
+import org.apache.commons.csv.CSVFormat
 import org.springframework.stereotype.Service
+import java.io.StringReader
+import java.io.StringWriter
 import java.time.Instant
 import java.util.UUID
 import javax.crypto.Mac
@@ -454,14 +457,16 @@ class DebugSessionService(
         val rows = parseCsv(raw)
         if (rows.isEmpty()) return ""
         val headers = rows.first()
-        val output = mutableListOf(headers)
-        rows.drop(1).forEach { row ->
-            output += headers.mapIndexed { index, header ->
-                val value = row.getOrElse(index) { "" }
-                sanitizeField(header, value, context)
+        val output = buildList {
+            add(headers)
+            rows.drop(1).forEach { row ->
+                add(headers.mapIndexed { index, header ->
+                    val value = row.getOrElse(index) { "" }
+                    sanitizeField(header, value, context)
+                })
             }
         }
-        return output.joinToString("\n") { row -> row.joinToString(",") { csvEscape(it) } }
+        return writeCsv(output)
     }
 
     private fun sanitizeJson(raw: String, context: SanitizeContext): String {
@@ -811,43 +816,19 @@ class DebugSessionService(
             .trim()
 
     private fun parseCsv(raw: String): List<List<String>> {
-        val rows = mutableListOf<List<String>>()
-        val row = mutableListOf<String>()
-        val cell = StringBuilder()
-        var quoted = false
-        var index = 0
-        while (index < raw.length) {
-            val char = raw[index]
-            when {
-                char == '"' && quoted && raw.getOrNull(index + 1) == '"' -> {
-                    cell.append('"')
-                    index += 1
-                }
-                char == '"' -> quoted = !quoted
-                char == ',' && !quoted -> {
-                    row += cell.toString()
-                    cell.clear()
-                }
-                (char == '\n' || char == '\r') && !quoted -> {
-                    if (char == '\r' && raw.getOrNull(index + 1) == '\n') index += 1
-                    row += cell.toString()
-                    cell.clear()
-                    rows += row.toList()
-                    row.clear()
-                }
-                else -> cell.append(char)
-            }
-            index += 1
-        }
-        if (cell.isNotEmpty() || row.isNotEmpty()) {
-            row += cell.toString()
-            rows += row.toList()
-        }
-        return rows.filterNot { cells -> cells.all { it.isBlank() } }
+        val records = CSVFormat.DEFAULT.parse(StringReader(raw))
+        return records
+            .map { record -> record.toList() }
+            .filterNot { cells -> cells.all { it.isBlank() } }
     }
 
-    private fun csvEscape(value: String): String =
-        if (value.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"${value.replace("\"", "\"\"")}\"" else value
+    private fun writeCsv(rows: List<List<String>>): String {
+        val output = StringWriter()
+        CSVFormat.DEFAULT.print(output).use { printer ->
+            rows.forEach { row -> printer.printRecord(row) }
+        }
+        return output.toString().trimEnd('\r', '\n')
+    }
 
     private fun likelyPersonName(value: String, field: String): Boolean =
         field.contains("name") || (value.length in 3..80 && value.split(Regex("""\s+""")).size in 2..3 && likelyFullNameRegex.matches(value))

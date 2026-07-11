@@ -82,6 +82,25 @@ class DebugSessionServiceTest {
     }
 
     @Test
+    fun `csv sanitizer preserves quoted commas with real csv parser`() {
+        val session = service.create("quoted csv sanitizer")
+
+        val response = service.sanitize(
+            session.id,
+            SanitizeDebugRequest(
+                inputType = DebugInputType.csv,
+                sourceName = "visits",
+                rawText = "user_id,location,note\n42,\"Berlin, Germany\",\"some text\"",
+            ),
+        )
+
+        assertTrue(response.sanitizedText.contains("USER_001"))
+        assertTrue(response.sanitizedText.contains("\"Berlin, Germany\""))
+        assertTrue(response.sanitizedText.contains("some text"))
+        assertFalse(response.sanitizedText.contains("\",\"Germany"))
+    }
+
+    @Test
     fun `debug session compacts sanitized logs for agent context and keeps sanitized raw slices`() {
         val session = service.create("compact logs")
         val raw = buildString {

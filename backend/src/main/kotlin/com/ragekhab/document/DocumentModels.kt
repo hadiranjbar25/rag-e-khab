@@ -5,8 +5,13 @@ import java.util.UUID
 
 enum class DocumentFormat {
     PDF,
+    WORD,
+    PRESENTATION,
+    SPREADSHEET,
+    HTML,
     MARKDOWN,
     TEXT,
+    OTHER,
 }
 
 enum class ArtifactKind {

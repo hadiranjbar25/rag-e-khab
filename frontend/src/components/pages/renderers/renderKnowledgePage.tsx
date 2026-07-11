@@ -54,12 +54,12 @@ export function renderKnowledgePage(app: RageKhabAppModel) {
 	              ) : (
 	                <Paper component={Stack} gap="sm" align="center" ta="center" p="xl" radius="sm" withBorder>
 	                  <Upload size={28} />
-	                  <Text fw={700}>Choose a PDF, Markdown, or text file</Text>
+	                  <Text fw={700}>Choose a document, sheet, slide deck, or text file</Text>
 	                  <Text size="sm" c="dimmed">{selectedProject?.name ?? 'General'}</Text>
 	                  <FileInput
 	                    value={uploadFile}
 	                    onChange={upload}
-	                    accept=".pdf,.md,.markdown,.txt,text/plain,application/pdf"
+	                    accept=".pdf,.doc,.docx,.odt,.rtf,.ppt,.pptx,.odp,.xls,.xlsx,.ods,.csv,.tsv,.html,.htm,.md,.markdown,.txt,text/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	                    placeholder="Select file"
 	                    disabled={busy}
 	                    clearable
