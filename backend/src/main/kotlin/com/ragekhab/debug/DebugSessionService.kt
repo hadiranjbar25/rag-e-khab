@@ -210,6 +210,7 @@ class DebugSessionService(
                 repository = request.repository?.trim()?.takeIf { it.isNotBlank() },
                 module = request.module?.trim()?.takeIf { it.isNotBlank() },
                 projectId = request.projectId,
+                global = request.global,
             ),
         )
         touch(sessionId)

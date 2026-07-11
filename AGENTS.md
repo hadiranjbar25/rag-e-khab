@@ -42,6 +42,7 @@ Before coding, use:
 - recall_memory for project conventions, prior bug fixes, architecture decisions, and patterns.
 - optimize_context when you need the smallest useful code context for a task.
 - search_documents when you need indexed documents or repository knowledge.
+- When calling remember, pass the active workspace projectId. Use global=true only when the developer explicitly asks for General/global memory.
 
 For debugging with production-like data:
 - Use Safe Debug Sessions only.
@@ -87,6 +88,7 @@ Debugging task:
 - The agent should expand only small sanitized raw slices when needed.
 - The agent should not move debug data into memory directly.
 - Durable memory should contain only general, reusable, non-sensitive lessons approved by the developer.
+- Memory scope must be explicit: pass projectId for workspace memory, or global=true only for intentional General memory.
 
 Good memory:
 

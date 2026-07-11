@@ -196,7 +196,7 @@ Important tools:
 | `build_context_package` | Build compact task-focused repo context with summaries, dependency chains, tests, snippets, and debug reasons. |
 | `optimize_context` | Retrieve and trim relevant context within a token budget. |
 | `search_documents` | Semantic search over indexed documents and repository context. |
-| `remember` | Store a structured long-term memory. |
+| `remember` | Store a structured long-term memory. Requires `projectId`, unless `global=true` is explicitly intended. |
 | `list_memories` | List durable memories. |
 | `list_debug_sessions` | List Safe Debug Sessions. |
 | `get_debug_session_state` | Inspect compact sanitized debug artifacts and request state. |
@@ -247,6 +247,8 @@ Typical workflow:
 Repository-scoped memories include a freshness signal. When indexed files in the same repository and module changed after a memory was saved, the Memories page marks it for review and shows the related changed file paths.
 
 Global memories are not marked stale because they are not tied to a repository snapshot. The signal is computed at read time from repository metadata, so existing memories remain compatible.
+
+Memory scope is explicit. Creating memory requires either a workspace `projectId` or `global=true`; this prevents accidental saves into the General workspace when an agent or API caller forgets the active workspace.
 
 ## Workspace Health
 

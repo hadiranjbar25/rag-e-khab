@@ -114,6 +114,7 @@ class McpController(
                     repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
                     module = arguments["module"]?.toString()?.takeIf { it.isNotBlank() },
                     projectId = projectId,
+                    global = arguments["global"]?.toString()?.toBooleanStrictOrNull() ?: false,
                 ),
             )
             "recall_memory" -> memoryService.recall(
@@ -221,7 +222,7 @@ class McpController(
         tool("add_text", "Add typed or pasted text to the knowledge base.", mapOf("title" to "string", "text" to "string", "projectId" to "string")),
         tool("add_artifact", "Store raw developer artifact and index a compressed representation by default.", mapOf("title" to "string", "content" to "string", "kind" to "string", "projectId" to "string")),
         tool("search_documents", "Search indexed private documents semantically, optionally within a project.", mapOf("query" to "string", "limit" to "number", "projectId" to "string")),
-        tool("remember", "Store a durable structured memory for future coding-agent sessions.", mapOf("type" to "string", "content" to "string", "confidence" to "number", "repository" to "string", "module" to "string", "projectId" to "string")),
+        tool("remember", "Store a durable structured memory. Pass projectId for workspace scope, or global=true only when the user explicitly wants General memory.", mapOf("type" to "string", "content" to "string", "confidence" to "number", "repository" to "string", "module" to "string", "projectId" to "string", "global" to "boolean")),
         tool("recall_memory", "Retrieve relevant long-term memories before working on a coding task.", mapOf("task" to "string", "limit" to "number", "repository" to "string", "module" to "string", "type" to "string", "projectId" to "string")),
         tool("list_memories", "List stored coding-agent memories.", mapOf("projectId" to "string")),
         tool("delete_memory", "Delete a stored coding-agent memory.", mapOf("id" to "string")),

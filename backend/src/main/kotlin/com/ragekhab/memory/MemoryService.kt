@@ -29,6 +29,12 @@ class MemoryService(
     fun remember(request: RememberRequest): AgentMemory {
         val content = request.content.trim()
         require(content.isNotBlank()) { "Memory content must not be blank." }
+        require(request.projectId != null || request.global) {
+            "Memory scope must be explicit. Pass projectId for a workspace memory, or global=true for General memory."
+        }
+        require(!(request.projectId != null && request.global)) {
+            "Memory scope is ambiguous. Pass either projectId or global=true, not both."
+        }
 
         val memory = AgentMemory(
             id = UUID.randomUUID(),

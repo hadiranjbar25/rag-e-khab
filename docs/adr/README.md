@@ -20,3 +20,4 @@ ADRs are intentionally short. Each one explains the context, the decision, and t
 - [0012 - Context budget profiles standardize optimizer size](0012-context-budget-profiles.md)
 - [0013 - Safe Debug compares sanitized artifacts only](0013-safe-debug-sanitized-artifact-comparison.md)
 - [0014 - Extract frontend feature panels from the app shell](0014-frontend-feature-panel-components.md)
+- [0015 - Memory writes require explicit scope](0015-memory-writes-require-explicit-scope.md)

@@ -176,6 +176,7 @@ data class PromoteDebugMemoryRequest(
     val repository: String? = null,
     val module: String? = null,
     val projectId: UUID? = null,
+    val global: Boolean = false,
 )
 
 data class DebugSessionContext(

@@ -1168,13 +1168,14 @@ export default function App() {
           content: memoryContentDraft,
           confidence: 1,
           repository: memoryRepositoryDraft.trim() || undefined,
-          projectId: selectedProjectId || undefined
+          projectId: selectedProjectId || undefined,
+          global: false
         })
       });
       setMemoryContentDraft('');
       setMemoryRepositoryDraft('');
       await refresh();
-      showToast({ type: 'success', title: 'Memory saved', message: memory.type });
+      showToast({ type: 'success', title: 'Memory saved', message: `${memory.type} · ${selectedProject?.name ?? 'selected workspace'}` });
     } catch (err) {
       reportError(err, 'Memory save failed');
     } finally {
@@ -1422,7 +1423,8 @@ export default function App() {
           confidence: debugMemoryConfidenceDraft,
           repository: debugMemoryRepositoryDraft.trim() || undefined,
           module: debugMemoryModuleDraft.trim() || undefined,
-          projectId: selectedProjectId || undefined
+          projectId: selectedProjectId || undefined,
+          global: false
         })
       });
       setDebugMemoryContentDraft('');
@@ -1430,7 +1432,7 @@ export default function App() {
       setDebugMemoryModuleDraft('');
       setDebugDetail(await request<DebugSessionDetail>(`/api/debug-sessions/${activeDebugSessionId}`));
       await refresh();
-      showToast({ type: 'success', title: 'Lesson promoted to memory', message: memory.type });
+      showToast({ type: 'success', title: 'Lesson promoted to memory', message: `${memory.type} · ${selectedProject?.name ?? 'selected workspace'}` });
     } catch (err) {
       reportError(err, 'Memory promotion failed');
     } finally {
@@ -2043,6 +2045,7 @@ export default function App() {
                 <Stack gap={4}>
                   <Title order={2} size="h3">Remember for this workspace</Title>
                   <Text c="dimmed">Store rules like coding conventions, architecture decisions, and workspace-specific preferences.</Text>
+                  <Badge color="teal" variant="light">Scope: {selectedProject?.name ?? 'selected workspace'}</Badge>
                 </Stack>
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                   <Select
@@ -2052,7 +2055,7 @@ export default function App() {
                   />
                   <TextInput value={memoryRepositoryDraft} onChange={(event) => setMemoryRepositoryDraft(event.currentTarget.value)} placeholder="repository optional" />
                   <Textarea style={{ gridColumn: '1 / -1' }} value={memoryContentDraft} onChange={(event) => setMemoryContentDraft(event.currentTarget.value)} placeholder="Do not use uppercase UI labels in this workspace. Prefer sentence case." autosize minRows={3} />
-                  <Button onClick={rememberMemory} disabled={busy || !memoryContentDraft.trim()}>Remember</Button>
+                  <Button onClick={rememberMemory} disabled={busy || !memoryContentDraft.trim() || !selectedProjectId}>Remember</Button>
                 </SimpleGrid>
             </Paper>
 
@@ -2404,6 +2407,7 @@ export default function App() {
                           <Stack gap={2}>
                             <Title order={2} size="h4">Promote lesson to memory</Title>
                             <Text size="sm" c="dimmed">Save only durable, sanitized conclusions. Tokens, raw IDs, PII, and SQL with real IDs are blocked.</Text>
+                            <Badge color="teal" variant="light">Scope: {selectedProject?.name ?? 'selected workspace'}</Badge>
                           </Stack>
                           <Brain size={18} />
                         </Group>
@@ -2432,7 +2436,7 @@ export default function App() {
                           <TextInput value={debugMemoryModuleDraft} onChange={(event) => setDebugMemoryModuleDraft(event.target.value)} placeholder="module optional" />
                           <NumberInput min={0} max={1} step={0.05} value={debugMemoryConfidenceDraft} onChange={(value) => setDebugMemoryConfidenceDraft(Number(value) || 0)} />
                           <Textarea style={wideGridItemStyle} value={debugMemoryContentDraft} onChange={(event) => setDebugMemoryContentDraft(event.target.value)} placeholder="Example: Payment retries can fail when an order is archived before the payment attempt reaches terminal status." minRows={4} autosize />
-                          <Button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim()} leftSection={<Brain size={18} />}>Promote</Button>
+                          <Button onClick={promoteDebugMemory} disabled={busy || !debugMemoryContentDraft.trim() || !selectedProjectId} leftSection={<Brain size={18} />}>Promote</Button>
                         </SimpleGrid>
                       </Paper>
 

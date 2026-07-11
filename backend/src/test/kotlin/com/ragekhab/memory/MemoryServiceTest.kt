@@ -10,6 +10,7 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class MemoryServiceTest {
@@ -24,6 +25,7 @@ class MemoryServiceTest {
                 content = "Supplier validation lives in SupplierValidator.",
                 repository = "supplier-service",
                 module = "src",
+                global = true,
             ),
         )
         metadataStore.save(
@@ -56,10 +58,28 @@ class MemoryServiceTest {
             RememberRequest(
                 type = MemoryType.ProjectKnowledge,
                 content = "Use sentence case in UI labels.",
+                global = true,
             ),
         )
 
         assertEquals(MemoryFreshnessStatus.current, service.list().single().freshness.status)
+    }
+
+    @Test
+    fun `memory scope must be explicit`() {
+        val state = testStateStore()
+        val service = MemoryService(MemoryRepository(state), FakeVectorIndex(), RepositoryMetadataStore(state))
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.remember(
+                RememberRequest(
+                    type = MemoryType.TechnicalDebt,
+                    content = "Split large frontend panels into typed components.",
+                ),
+            )
+        }
+
+        assertTrue(error.message.orEmpty().contains("Memory scope must be explicit"))
     }
 
     private class FakeVectorIndex : VectorIndex {
