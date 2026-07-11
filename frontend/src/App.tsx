@@ -62,6 +62,7 @@ import {
   Upload,
   Zap
 } from 'lucide-react';
+import { SafeDebugArtifactsPanel } from './components/SafeDebugArtifactsPanel';
 
 type ProjectItem = {
   id: string;
@@ -2468,139 +2469,27 @@ export default function App() {
                       </Paper>
 
                       <SimpleGrid component="section" cols={{ base: 1, lg: 2 }} spacing="lg">
-                        <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
-                          <Group justify="space-between" align="center">
-                            <Stack gap={2}>
-                              <Title order={2} size="h4">Shared artifacts</Title>
-                              <Text size="xs" c="dimmed">Agents see compact text by default. Expand only the sanitized raw lines you need.</Text>
-                            </Stack>
-                            <Badge color="gray" variant="light">{debugDetail.artifacts.length}</Badge>
-                          </Group>
-                          <Group align="end" gap="sm">
-                            <NumberInput
-                              label="Start line"
-                              min={1}
-                              value={debugArtifactSliceStart}
-                              onChange={(value) => setDebugArtifactSliceStart(Number(value) || 1)}
-                            />
-                            <NumberInput
-                              label="End line"
-                              min={1}
-                              value={debugArtifactSliceEnd}
-                              onChange={(value) => setDebugArtifactSliceEnd(Number(value) || 1)}
-                            />
-                          </Group>
-                          <Stack gap="sm">
-                            {debugDetail.artifacts.map((artifact) => (
-                              <Paper component={Stack} gap="sm" key={artifact.id} p="sm" radius="sm" withBorder>
-                                <Group justify="space-between" align="flex-start" gap="sm">
-                                  <Stack gap={2} miw={0}>
-                                    <Text fw={700}>{artifact.inputType.toUpperCase()} · {artifact.sourceName}</Text>
-                                    <Text size="xs" c="dimmed">{new Date(artifact.createdAt).toLocaleString()}</Text>
-                                    <Text size="xs" c="dimmed">{artifact.warningSummary.length} warning group(s)</Text>
-                                  </Stack>
-                                  <Group gap="xs">
-                                    {artifact.reductionPercent !== undefined && <Badge color="teal" variant="light">{artifact.reductionPercent}% smaller</Badge>}
-                                    <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(artifactTextFor(artifact), artifact.id)} title="Copy compact artifact"><Copy size={17} /></ActionIcon>
-                                  </Group>
-                                </Group>
-                                {(artifact.rawTokenEstimate !== undefined || artifact.compressedTokenEstimate !== undefined) && (
-                                  <Text size="xs" c="dimmed">
-                                    {artifact.rawTokenEstimate?.toLocaleString() ?? '-'} raw tokens - {artifact.compressedTokenEstimate?.toLocaleString() ?? '-'} compact tokens
-                                  </Text>
-                                )}
-                                <Group gap="sm">
-                                  <Button variant="subtle" color="gray" onClick={() => copyDebugText(artifactTextFor(artifact), artifact.id)} leftSection={<Copy size={16} />}>Copy compact</Button>
-                                  <Button variant="light" color="gray" onClick={() => expandDebugArtifactSlice(artifact.id)} disabled={busy} leftSection={<FileText size={16} />}>Expand slice</Button>
-                                </Group>
-                              </Paper>
-                            ))}
-                            {debugDetail.artifacts.length === 0 && <Text c="dimmed">No sanitized artifacts saved yet.</Text>}
-                          </Stack>
-                          {debugArtifactSlice && (
-                            <Paper component={Stack} gap="sm" p="sm" radius="sm" withBorder>
-                              <Group justify="space-between" align="center">
-                                <Text fw={700}>Sanitized raw slice · lines {debugArtifactSlice.startLine}-{debugArtifactSlice.endLine}</Text>
-                                <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(debugArtifactSlice.text, debugArtifactSlice.artifactId)} title="Copy slice"><Copy size={17} /></ActionIcon>
-                              </Group>
-                              <Paper component="pre" p="sm" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
-                                {debugArtifactSlice.text}
-                              </Paper>
-                            </Paper>
-                          )}
-                          {debugDetail.artifacts.length >= 2 && (
-                            <Paper component={Stack} gap="md" p="sm" radius="sm" withBorder>
-                              <Group justify="space-between" align="flex-start">
-                                <Stack gap={2}>
-                                  <Text fw={700}>Compare sanitized artifacts</Text>
-                                  <Text size="xs" c="dimmed">Compare sanitized full artifacts to spot changed rows, errors, and log lines.</Text>
-                                </Stack>
-                                <Badge color="teal" variant="light">{debugArtifactComparison?.totalChangedLines ?? 0} changes</Badge>
-                              </Group>
-                              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                                <Select
-                                  label="Before"
-                                  value={debugCompareLeftId || null}
-                                  onChange={(value) => {
-                                    setDebugCompareLeftId(value ?? '');
-                                    setDebugArtifactComparison(null);
-                                  }}
-                                  data={debugArtifactOptions}
-                                />
-                                <Select
-                                  label="After"
-                                  value={debugCompareRightId || null}
-                                  onChange={(value) => {
-                                    setDebugCompareRightId(value ?? '');
-                                    setDebugArtifactComparison(null);
-                                  }}
-                                  data={debugArtifactOptions}
-                                />
-                              </SimpleGrid>
-                              <Button
-                                variant="light"
-                                color="teal"
-                                onClick={compareDebugArtifacts}
-                                disabled={busy || !debugCompareLeftId || !debugCompareRightId || debugCompareLeftId === debugCompareRightId}
-                              >
-                                Compare artifacts
-                              </Button>
-                              {debugArtifactComparison && (
-                                <Stack gap="sm">
-                                  <Alert color={debugArtifactComparison.totalChangedLines > 0 ? 'yellow' : 'green'} variant="light">
-                                    {debugArtifactComparison.summary} {debugArtifactComparison.unchangedLineCount} sanitized line(s) unchanged.
-                                  </Alert>
-                                  <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                                    <Stack gap="xs">
-                                      <Group justify="space-between">
-                                        <Text fw={700}>Added</Text>
-                                        <Badge color="green" variant="light">{debugArtifactComparison.addedLines.length}</Badge>
-                                      </Group>
-                                      {debugArtifactComparison.addedLines.map((line) => (
-                                        <Paper component="pre" key={`added-${line.lineNumber}-${line.text}`} p="xs" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
-                                          +{line.lineNumber}: {line.text}
-                                        </Paper>
-                                      ))}
-                                      {debugArtifactComparison.addedLines.length === 0 && <Text size="sm" c="dimmed">No added sanitized lines.</Text>}
-                                    </Stack>
-                                    <Stack gap="xs">
-                                      <Group justify="space-between">
-                                        <Text fw={700}>Removed</Text>
-                                        <Badge color="red" variant="light">{debugArtifactComparison.removedLines.length}</Badge>
-                                      </Group>
-                                      {debugArtifactComparison.removedLines.map((line) => (
-                                        <Paper component="pre" key={`removed-${line.lineNumber}-${line.text}`} p="xs" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
-                                          -{line.lineNumber}: {line.text}
-                                        </Paper>
-                                      ))}
-                                      {debugArtifactComparison.removedLines.length === 0 && <Text size="sm" c="dimmed">No removed sanitized lines.</Text>}
-                                    </Stack>
-                                  </SimpleGrid>
-                                </Stack>
-                              )}
-                            </Paper>
-                          )}
-                        </Paper>
+                        <SafeDebugArtifactsPanel
+                          artifacts={debugDetail.artifacts}
+                          busy={busy}
+                          sliceStart={debugArtifactSliceStart}
+                          sliceEnd={debugArtifactSliceEnd}
+                          artifactSlice={debugArtifactSlice}
+                          compareLeftId={debugCompareLeftId}
+                          compareRightId={debugCompareRightId}
+                          artifactComparison={debugArtifactComparison}
+                          artifactOptions={debugArtifactOptions}
+                          preWrapStyle={preWrapStyle}
+                          setSliceStart={setDebugArtifactSliceStart}
+                          setSliceEnd={setDebugArtifactSliceEnd}
+                          setCompareLeftId={setDebugCompareLeftId}
+                          setCompareRightId={setDebugCompareRightId}
+                          clearArtifactComparison={() => setDebugArtifactComparison(null)}
+                          artifactTextFor={artifactTextFor}
+                          copyDebugText={copyDebugText}
+                          expandArtifactSlice={expandDebugArtifactSlice}
+                          compareArtifacts={compareDebugArtifacts}
+                        />
 
                         <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
                           <Group justify="space-between" align="center">

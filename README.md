@@ -289,7 +289,7 @@ The Context Optimizer page also includes task templates. Templates fill in a sta
 ```text
 agent/       Standalone repository sync agent
 backend/     Spring Boot API, MCP server, persistence, indexing, memory, Safe Debug
-frontend/    React UI
+frontend/    React UI and extracted feature components
 docs/adr/    Architecture Decision Records
 docs/        Examples and supporting docs
 docker/      Nginx config for the frontend container
