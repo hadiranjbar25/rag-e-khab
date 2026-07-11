@@ -221,3 +221,32 @@ data class DebugArtifactSlice(
     val endLine: Int,
     val text: String,
 )
+
+enum class DebugArtifactDiffType {
+    added,
+    removed,
+}
+
+data class DebugArtifactReference(
+    val id: UUID,
+    val sourceName: String,
+    val inputType: DebugInputType,
+    val createdAt: Instant,
+    val lineCount: Int,
+)
+
+data class DebugArtifactDiffLine(
+    val type: DebugArtifactDiffType,
+    val lineNumber: Int,
+    val text: String,
+)
+
+data class DebugArtifactComparison(
+    val left: DebugArtifactReference,
+    val right: DebugArtifactReference,
+    val summary: String,
+    val unchangedLineCount: Int,
+    val totalChangedLines: Int,
+    val addedLines: List<DebugArtifactDiffLine>,
+    val removedLines: List<DebugArtifactDiffLine>,
+)

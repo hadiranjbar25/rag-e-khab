@@ -129,4 +129,32 @@ class DebugSessionServiceTest {
         assertContains(suggestion.content, "affected entity")
         assertFalse(suggestion.content.contains("ORDER_001"))
     }
+
+    @Test
+    fun `debug artifact comparison uses sanitized lines only`() {
+        val session = service.create("artifact compare")
+        val first = service.sanitize(
+            session.id,
+            SanitizeDebugRequest(
+                inputType = DebugInputType.log,
+                sourceName = "before.log",
+                rawText = "INFO ok for jane@example.com\nERROR payment failed for jane@example.com",
+            ),
+        ).artifact
+        val second = service.sanitize(
+            session.id,
+            SanitizeDebugRequest(
+                inputType = DebugInputType.log,
+                sourceName = "after.log",
+                rawText = "INFO ok for jane@example.com\nERROR payment retried for jane@example.com\nWARN retry limit reached",
+            ),
+        ).artifact
+
+        val comparison = service.compareArtifacts(session.id, first.id, second.id)
+        val comparedText = (comparison.addedLines + comparison.removedLines).joinToString("\n") { it.text }
+
+        assertTrue(comparison.totalChangedLines >= 2)
+        assertContains(comparedText, "EMAIL_001")
+        assertFalse(comparedText.contains("jane@example.com"))
+    }
 }

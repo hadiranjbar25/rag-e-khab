@@ -314,10 +314,89 @@ class DebugSessionService(
         )
     }
 
+    fun compareArtifacts(sessionId: UUID, leftArtifactId: UUID, rightArtifactId: UUID): DebugArtifactComparison {
+        requireSession(sessionId)
+        require(leftArtifactId != rightArtifactId) { "Choose two different debug artifacts to compare." }
+        val left = store.getArtifact(leftArtifactId) ?: error("Left debug artifact not found.")
+        val right = store.getArtifact(rightArtifactId) ?: error("Right debug artifact not found.")
+        require(left.sessionId == sessionId && right.sessionId == sessionId) {
+            "Debug artifacts must belong to this session."
+        }
+
+        val leftLines = comparableLines(left.sanitizedText)
+        val rightLines = comparableLines(right.sanitizedText)
+        val leftCounts = leftLines.groupingBy { it.normalized }.eachCount()
+        val rightCounts = rightLines.groupingBy { it.normalized }.eachCount()
+        val unchanged = leftCounts.entries.sumOf { (line, count) -> minOf(count, rightCounts[line] ?: 0) }
+        val added = diffLines(
+            type = DebugArtifactDiffType.added,
+            source = rightLines,
+            sourceCounts = rightCounts,
+            otherCounts = leftCounts,
+        )
+        val removed = diffLines(
+            type = DebugArtifactDiffType.removed,
+            source = leftLines,
+            sourceCounts = leftCounts,
+            otherCounts = rightCounts,
+        )
+        val totalChanged = added.size + removed.size
+        audit(sessionId, "debug_artifacts_compared", "$leftArtifactId:$rightArtifactId")
+        return DebugArtifactComparison(
+            left = left.toReference(leftLines.size),
+            right = right.toReference(rightLines.size),
+            summary = when {
+                totalChanged == 0 -> "No sanitized line changes detected."
+                added.isNotEmpty() && removed.isNotEmpty() -> "${added.size} added and ${removed.size} removed sanitized line(s)."
+                added.isNotEmpty() -> "${added.size} sanitized line(s) added."
+                else -> "${removed.size} sanitized line(s) removed."
+            },
+            unchangedLineCount = unchanged,
+            totalChangedLines = totalChanged,
+            addedLines = added.take(MAX_COMPARISON_LINES),
+            removedLines = removed.take(MAX_COMPARISON_LINES),
+        )
+    }
+
     fun auditExport(sessionId: UUID, artifactId: UUID? = null) {
         requireSession(sessionId)
         audit(sessionId, "artifact_copied_exported", artifactId?.toString() ?: "instruction_or_sanitized_output")
     }
+
+    private fun comparableLines(text: String): List<ComparableLine> =
+        text.lines()
+            .mapIndexedNotNull { index, line ->
+                val normalized = line.trim()
+                normalized.takeIf { it.isNotBlank() }?.let {
+                    ComparableLine(index + 1, line.take(MAX_COMPARISON_LINE_LENGTH), it)
+                }
+            }
+
+    private fun diffLines(
+        type: DebugArtifactDiffType,
+        source: List<ComparableLine>,
+        sourceCounts: Map<String, Int>,
+        otherCounts: Map<String, Int>,
+    ): List<DebugArtifactDiffLine> {
+        val emitted = mutableMapOf<String, Int>()
+        return source.mapNotNull { line ->
+            val allowed = (sourceCounts[line.normalized] ?: 0) - (otherCounts[line.normalized] ?: 0)
+            if (allowed <= 0) return@mapNotNull null
+            val current = emitted[line.normalized] ?: 0
+            if (current >= allowed) return@mapNotNull null
+            emitted[line.normalized] = current + 1
+            DebugArtifactDiffLine(type, line.lineNumber, line.text)
+        }
+    }
+
+    private fun DebugArtifact.toReference(lineCount: Int): DebugArtifactReference =
+        DebugArtifactReference(
+            id = id,
+            sourceName = sourceName,
+            inputType = inputType,
+            createdAt = createdAt,
+            lineCount = lineCount,
+        )
 
     private fun compressSanitizedArtifact(sourceName: String, inputType: DebugInputType, sanitized: String) =
         compressorFor(inputType.toArtifactKind()).compress(
@@ -694,6 +773,12 @@ class DebugSessionService(
         val keep: Boolean = false,
     )
 
+    private data class ComparableLine(
+        val lineNumber: Int,
+        val text: String,
+        val normalized: String,
+    )
+
     private class WarningCollector {
         private val warnings = linkedMapOf<String, DebugWarning>()
 
@@ -729,6 +814,8 @@ class DebugSessionService(
         private val debugTokenRegex = Regex("""\b(?:USER|ORDER|PAYMENT|EMAIL|PERSON|PHONE|ADDRESS|UNKNOWN|SECRET|SSN|DATE|UUID|IP)_\d{3,}\b""")
         private val debugLessonLineRegex = Regex("""\b(error|failed|failure|exception|caused by|invalid|timeout|rejected|stuck)\b""", RegexOption.IGNORE_CASE)
         private val sqlRealIdRegex = Regex("""\bwhere\s+[a-z_][a-z0-9_]*\s*=\s*(?:\d+|'[^']+')""", RegexOption.IGNORE_CASE)
+        private const val MAX_COMPARISON_LINES = 80
+        private const val MAX_COMPARISON_LINE_LENGTH = 500
         private val riskyColumns = listOf("email", "phone", "name", "address", "iban", "card", "ssn", "dob", "birth", "note", "comment", "description", "secret", "token", "api_key")
         private val configuredRules = mapOf(
             "users" to mapOf(

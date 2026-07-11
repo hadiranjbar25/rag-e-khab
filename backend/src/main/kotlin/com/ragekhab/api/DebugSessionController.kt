@@ -3,6 +3,7 @@ package com.ragekhab.api
 import com.ragekhab.debug.CreateDebugSessionRequest
 import com.ragekhab.debug.CreateDebugDataRequest
 import com.ragekhab.debug.DebugArtifact
+import com.ragekhab.debug.DebugArtifactComparison
 import com.ragekhab.debug.DebugArtifactSlice
 import com.ragekhab.debug.DebugDataRequest
 import com.ragekhab.debug.DebugDataRequestCreated
@@ -95,6 +96,14 @@ class DebugSessionController(
         @RequestParam afterLine: Int,
     ): DebugArtifactSlice =
         debugSessions.artifactSlice(sessionId, artifactId, beforeLine, afterLine)
+
+    @GetMapping("/{sessionId}/artifacts/compare")
+    fun compareArtifacts(
+        @PathVariable sessionId: UUID,
+        @RequestParam leftArtifactId: UUID,
+        @RequestParam rightArtifactId: UUID,
+    ): DebugArtifactComparison =
+        debugSessions.compareArtifacts(sessionId, leftArtifactId, rightArtifactId)
 }
 
 data class DebugExportRequest(val artifactId: UUID? = null)

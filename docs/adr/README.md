@@ -18,3 +18,4 @@ ADRs are intentionally short. Each one explains the context, the decision, and t
 - [0010 - Compute memory freshness from repository metadata](0010-memory-freshness-from-repository-metadata.md)
 - [0011 - Workspace health is an advisory readiness score](0011-workspace-health-readiness-score.md)
 - [0012 - Context budget profiles standardize optimizer size](0012-context-budget-profiles.md)
+- [0013 - Safe Debug compares sanitized artifacts only](0013-safe-debug-sanitized-artifact-comparison.md)

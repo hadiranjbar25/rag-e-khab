@@ -344,6 +344,30 @@ type DebugArtifactSlice = {
   text: string;
 };
 
+type DebugArtifactReference = {
+  id: string;
+  sourceName: string;
+  inputType: DebugInputType;
+  createdAt: string;
+  lineCount: number;
+};
+
+type DebugArtifactDiffLine = {
+  type: 'added' | 'removed';
+  lineNumber: number;
+  text: string;
+};
+
+type DebugArtifactComparison = {
+  left: DebugArtifactReference;
+  right: DebugArtifactReference;
+  summary: string;
+  unchangedLineCount: number;
+  totalChangedLines: number;
+  addedLines: DebugArtifactDiffLine[];
+  removedLines: DebugArtifactDiffLine[];
+};
+
 type DebugDataRequest = {
   id: string;
   sessionId: string;
@@ -632,6 +656,9 @@ export default function App() {
   const [debugArtifactSliceStart, setDebugArtifactSliceStart] = useState(1);
   const [debugArtifactSliceEnd, setDebugArtifactSliceEnd] = useState(80);
   const [debugArtifactSlice, setDebugArtifactSlice] = useState<DebugArtifactSlice | null>(null);
+  const [debugCompareLeftId, setDebugCompareLeftId] = useState('');
+  const [debugCompareRightId, setDebugCompareRightId] = useState('');
+  const [debugArtifactComparison, setDebugArtifactComparison] = useState<DebugArtifactComparison | null>(null);
   const [debugTokenQuery, setDebugTokenQuery] = useState('');
   const [debugResolvedToken, setDebugResolvedToken] = useState<DebugTokenMapping | null>(null);
   const [debugTokenSearch, setDebugTokenSearch] = useState('');
@@ -760,6 +787,22 @@ export default function App() {
       .then(setDebugDetail)
       .catch((err) => reportError(err, 'Debug session load failed'));
   }, [activeDebugSessionId]);
+
+  useEffect(() => {
+    const artifacts = debugDetail?.artifacts ?? [];
+    if (artifacts.length < 2) {
+      setDebugCompareLeftId('');
+      setDebugCompareRightId('');
+      setDebugArtifactComparison(null);
+      return;
+    }
+    if (!artifacts.some((artifact) => artifact.id === debugCompareLeftId)) {
+      setDebugCompareLeftId(artifacts[1].id);
+    }
+    if (!artifacts.some((artifact) => artifact.id === debugCompareRightId)) {
+      setDebugCompareRightId(artifacts[0].id);
+    }
+  }, [debugCompareLeftId, debugCompareRightId, debugDetail?.artifacts]);
 
   useEffect(() => {
     if (settingsDraft?.optimizer.maxTokens) {
@@ -1452,6 +1495,23 @@ export default function App() {
     }
   };
 
+  const compareDebugArtifacts = async () => {
+    if (!activeDebugSessionId || !debugCompareLeftId || !debugCompareRightId || debugCompareLeftId === debugCompareRightId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const comparison = await request<DebugArtifactComparison>(
+        `/api/debug-sessions/${activeDebugSessionId}/artifacts/compare?leftArtifactId=${debugCompareLeftId}&rightArtifactId=${debugCompareRightId}`
+      );
+      setDebugArtifactComparison(comparison);
+      showToast({ type: 'success', title: 'Artifacts compared', message: comparison.summary });
+    } catch (err) {
+      reportError(err, 'Artifact comparison failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const filteredDebugMappings = (debugDetail?.tokenMappings ?? []).filter((mapping) => {
     const query = debugTokenSearch.trim().toLowerCase();
     if (!query) return true;
@@ -1463,6 +1523,10 @@ export default function App() {
   const debugMemorySuggestions = debugDetail?.memorySuggestions ?? [];
   const latestDebugArtifact = debugDetail?.artifacts[0];
   const latestDebugText = debugSanitizedText || latestDebugArtifact?.compactText || latestDebugArtifact?.sanitizedText || '';
+  const debugArtifactOptions = (debugDetail?.artifacts ?? []).map((artifact) => ({
+    value: artifact.id,
+    label: `${artifact.sourceName} · ${new Date(artifact.createdAt).toLocaleString()}`,
+  }));
 
   const tokenMappingFor = (token?: string): DebugTokenMapping | undefined =>
     token ? debugDetail?.tokenMappings.find((mapping) => mapping.token.toLowerCase() === token.toLowerCase()) : undefined;
@@ -2462,6 +2526,78 @@ export default function App() {
                               <Paper component="pre" p="sm" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
                                 {debugArtifactSlice.text}
                               </Paper>
+                            </Paper>
+                          )}
+                          {debugDetail.artifacts.length >= 2 && (
+                            <Paper component={Stack} gap="md" p="sm" radius="sm" withBorder>
+                              <Group justify="space-between" align="flex-start">
+                                <Stack gap={2}>
+                                  <Text fw={700}>Compare sanitized artifacts</Text>
+                                  <Text size="xs" c="dimmed">Compare sanitized full artifacts to spot changed rows, errors, and log lines.</Text>
+                                </Stack>
+                                <Badge color="teal" variant="light">{debugArtifactComparison?.totalChangedLines ?? 0} changes</Badge>
+                              </Group>
+                              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                                <Select
+                                  label="Before"
+                                  value={debugCompareLeftId || null}
+                                  onChange={(value) => {
+                                    setDebugCompareLeftId(value ?? '');
+                                    setDebugArtifactComparison(null);
+                                  }}
+                                  data={debugArtifactOptions}
+                                />
+                                <Select
+                                  label="After"
+                                  value={debugCompareRightId || null}
+                                  onChange={(value) => {
+                                    setDebugCompareRightId(value ?? '');
+                                    setDebugArtifactComparison(null);
+                                  }}
+                                  data={debugArtifactOptions}
+                                />
+                              </SimpleGrid>
+                              <Button
+                                variant="light"
+                                color="teal"
+                                onClick={compareDebugArtifacts}
+                                disabled={busy || !debugCompareLeftId || !debugCompareRightId || debugCompareLeftId === debugCompareRightId}
+                              >
+                                Compare artifacts
+                              </Button>
+                              {debugArtifactComparison && (
+                                <Stack gap="sm">
+                                  <Alert color={debugArtifactComparison.totalChangedLines > 0 ? 'yellow' : 'green'} variant="light">
+                                    {debugArtifactComparison.summary} {debugArtifactComparison.unchangedLineCount} sanitized line(s) unchanged.
+                                  </Alert>
+                                  <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+                                    <Stack gap="xs">
+                                      <Group justify="space-between">
+                                        <Text fw={700}>Added</Text>
+                                        <Badge color="green" variant="light">{debugArtifactComparison.addedLines.length}</Badge>
+                                      </Group>
+                                      {debugArtifactComparison.addedLines.map((line) => (
+                                        <Paper component="pre" key={`added-${line.lineNumber}-${line.text}`} p="xs" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
+                                          +{line.lineNumber}: {line.text}
+                                        </Paper>
+                                      ))}
+                                      {debugArtifactComparison.addedLines.length === 0 && <Text size="sm" c="dimmed">No added sanitized lines.</Text>}
+                                    </Stack>
+                                    <Stack gap="xs">
+                                      <Group justify="space-between">
+                                        <Text fw={700}>Removed</Text>
+                                        <Badge color="red" variant="light">{debugArtifactComparison.removedLines.length}</Badge>
+                                      </Group>
+                                      {debugArtifactComparison.removedLines.map((line) => (
+                                        <Paper component="pre" key={`removed-${line.lineNumber}-${line.text}`} p="xs" radius="sm" withBorder bg="var(--mantine-color-default-hover)" style={preWrapStyle}>
+                                          -{line.lineNumber}: {line.text}
+                                        </Paper>
+                                      ))}
+                                      {debugArtifactComparison.removedLines.length === 0 && <Text size="sm" c="dimmed">No removed sanitized lines.</Text>}
+                                    </Stack>
+                                  </SimpleGrid>
+                                </Stack>
+                              )}
                             </Paper>
                           )}
                         </Paper>

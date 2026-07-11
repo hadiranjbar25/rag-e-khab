@@ -25,7 +25,7 @@ RAG-e Khab is designed for Codex, Claude Code, Cursor, Gemini CLI, and other MCP
 - **Task templates**: start common coding workflows such as bug fixes, endpoints, UI changes, refactors, and Safe Debug investigations from preset prompts and budgets.
 - **Agent activity timeline**: inspect recent MCP tool usage without storing raw prompts or sensitive payloads.
 - **Context packages**: return class summaries, dependency chains, related tests, snippets, and selection reasons.
-- **Safe Debug Sessions**: sanitize CSV, JSON, and logs, then compact noisy artifacts before sharing them with agents.
+- **Safe Debug Sessions**: sanitize CSV, JSON, and logs, compare sanitized artifacts, then compact noisy context before sharing it with agents.
 - **Memory suggestions**: propose editable sanitized lessons from Safe Debug sessions before saving durable memory.
 - **Artifact compression**: store raw developer artifacts locally while indexing compact summaries for retrieval.
 - **MCP tools**: expose memory, search, context, repository, artifact expansion, and Safe Debug workflows to coding agents.
@@ -222,6 +222,8 @@ For large pasted logs, agents receive compact context by default. The compactor 
 When compact debug context is not enough, agents can request a small sanitized raw line range with `get_debug_artifact_slice`. This expands sanitized data only, not original production values.
 
 Safe Debug also suggests reusable memory candidates from completed data requests, agent follow-up notes, and sanitized failure signals. Suggestions are editable and must pass the same memory-promotion safety checks as manually written lessons before they can be saved.
+
+Safe Debug can compare two sanitized artifacts in the same session. This helps spot changed rows, new errors, removed log lines, and repeated unchanged lines without exposing raw production values.
 
 Sanitizer modes:
 
