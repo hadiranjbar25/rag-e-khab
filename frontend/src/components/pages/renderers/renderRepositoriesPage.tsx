@@ -6,8 +6,10 @@ import {
   Button,
   Checkbox,
   Collapse,
+  Drawer,
   FileInput,
   Group,
+  Loader,
   Menu,
   NativeSelect,
   NumberInput,
@@ -32,7 +34,7 @@ import type { RageKhabAppModel } from '../../useRageKhabAppModel';
 import { contextBudgetProfileOptions, contextBudgetProfiles, CUSTOM_MODEL, DISABLED_MODEL, chatModelOptions, compressionModelOptions, embeddingModelOptions, formatBytes, memoryBadgeColor, memoryLabels, memoryTypes, selectValue, taskTemplates } from '../../../appSupport';
 
 export function renderRepositoriesPage(app: RageKhabAppModel) {
-  const { view, setView, ingestMode, setIngestMode, uploadFile, setUploadFile, projects, setProjects, selectedProjectId, setSelectedProjectId, projectName, setProjectName, textTitle, setTextTitle, textBody, setTextBody, documents, setDocuments, memories, setMemories, allMemories, setAllMemories, repositoryStatus, setRepositoryStatus, repositories, setRepositories, projectRepositories, setProjectRepositories, workspaceHealth, setWorkspaceHealth, agentActivities, setAgentActivities, debugSessions, setDebugSessions, activeDebugSessionId, setActiveDebugSessionId, debugDetail, setDebugDetail, debugTitle, setDebugTitle, debugRawText, setDebugRawText, debugInputType, setDebugInputType, debugSanitizerMode, setDebugSanitizerMode, debugSourceName, setDebugSourceName, debugDataRequestId, setDebugDataRequestId, debugSanitizedText, setDebugSanitizedText, debugWarnings, setDebugWarnings, debugArtifactSliceStart, setDebugArtifactSliceStart, debugArtifactSliceEnd, setDebugArtifactSliceEnd, debugArtifactSlice, setDebugArtifactSlice, debugCompareLeftId, setDebugCompareLeftId, debugCompareRightId, setDebugCompareRightId, debugArtifactComparison, setDebugArtifactComparison, debugTokenQuery, setDebugTokenQuery, debugResolvedToken, setDebugResolvedToken, debugTokenSearch, setDebugTokenSearch, agentRequestDraft, setAgentRequestDraft, repositoryToLink, setRepositoryToLink, repositorySearch, setRepositorySearch, repositoryPage, setRepositoryPage, repositoryPageSize, setRepositoryPageSize, repositoryFilesExpanded, setRepositoryFilesExpanded, deleteRepositoryKnowledge, setDeleteRepositoryKnowledge, memoryFilter, setMemoryFilter, memorySearch, setMemorySearch, memoryPage, setMemoryPage, memoryPageSize, setMemoryPageSize, repositoryFilePage, setRepositoryFilePage, repositoryFilePageSize, setRepositoryFilePageSize, memoryTypeDraft, setMemoryTypeDraft, memoryContentDraft, setMemoryContentDraft, memoryRepositoryDraft, setMemoryRepositoryDraft, memoryToLink, setMemoryToLink, debugMemoryTypeDraft, setDebugMemoryTypeDraft, debugMemoryContentDraft, setDebugMemoryContentDraft, debugMemoryRepositoryDraft, setDebugMemoryRepositoryDraft, debugMemoryModuleDraft, setDebugMemoryModuleDraft, debugMemoryConfidenceDraft, setDebugMemoryConfidenceDraft, status, setStatus, settingsDraft, setSettingsDraft, question, setQuestion, task, setTask, selectedTaskTemplate, setSelectedTaskTemplate, optimizerTokenBudget, setOptimizerTokenBudget, optimizerBudgetProfile, setOptimizerBudgetProfile, optimizedContext, setOptimizedContext, history, setHistory, activeSource, setActiveSource, busy, setBusy, error, setError, colorScheme, setColorScheme, selectedProject, showToast, reportError, navigate, refresh, totalChunks, tokenSavings, lastSync, linkedRepositoryIds, repositoryCards, filteredRepositories, repositoryPageCount, normalizedRepositoryPage, repositoryPageStart, pagedRepositories, repositoryRangeStart, repositoryRangeEnd, discoveredFiles, repositoryFilePageCount, normalizedRepositoryFilePage, repositoryFilePageStart, pagedRepositoryFiles, repositoryFileRangeStart, repositoryFileRangeEnd, sortedDebugSessions, activeDebugSession, activeWorkspaceHealth, workspaceHealthColor, workspaceHealthTitle, currentBudgetProfile, stats, navItems, suggestedQuestions, memoryCounts, filteredMemories, memoryPageCount, normalizedMemoryPage, memoryPageStart, pagedMemories, memoryRangeStart, memoryRangeEnd, staleMemoryCount, recentActivity, upload, addText, ask, applyTaskTemplate, optimizeContext, deleteDocument, reindex, createProject, deleteProject, deleteMemory, rememberMemory, linkMemoryToProject, unlinkMemoryFromProject, saveSettings, linkRepositoryToProject, unlinkRepositoryFromProject, deleteRepository, createDebugSession, openDebugSession, archiveDebugSession, sanitizeDebugData, resolveDebugToken, recordAgentRequest, promoteDebugMemory, applyDebugMemorySuggestion, updateDebugDataRequest, copyDebugText, expandDebugArtifactSlice, compareDebugArtifacts, filteredDebugMappings, pendingDebugRequests, debugMemorySuggestions, latestDebugArtifact, latestDebugText, debugArtifactOptions, tokenMappingFor, artifactTextFor, suggestedSqlFor, activeSafeDebugInstruction, pageCopy, pageTitles, preWrapStyle, wideGridItemStyle } = app;
+  const { view, setView, ingestMode, setIngestMode, uploadFile, setUploadFile, projects, setProjects, selectedProjectId, setSelectedProjectId, projectName, setProjectName, textTitle, setTextTitle, textBody, setTextBody, documents, setDocuments, memories, setMemories, allMemories, setAllMemories, repositoryStatus, setRepositoryStatus, repositories, setRepositories, projectRepositories, setProjectRepositories, workspaceHealth, setWorkspaceHealth, agentActivities, setAgentActivities, debugSessions, setDebugSessions, activeDebugSessionId, setActiveDebugSessionId, debugDetail, setDebugDetail, debugTitle, setDebugTitle, debugRawText, setDebugRawText, debugInputType, setDebugInputType, debugSanitizerMode, setDebugSanitizerMode, debugSourceName, setDebugSourceName, debugDataRequestId, setDebugDataRequestId, debugSanitizedText, setDebugSanitizedText, debugWarnings, setDebugWarnings, debugArtifactSliceStart, setDebugArtifactSliceStart, debugArtifactSliceEnd, setDebugArtifactSliceEnd, debugArtifactSlice, setDebugArtifactSlice, debugCompareLeftId, setDebugCompareLeftId, debugCompareRightId, setDebugCompareRightId, debugArtifactComparison, setDebugArtifactComparison, debugTokenQuery, setDebugTokenQuery, debugResolvedToken, setDebugResolvedToken, debugTokenSearch, setDebugTokenSearch, agentRequestDraft, setAgentRequestDraft, repositoryToLink, setRepositoryToLink, repositorySearch, setRepositorySearch, repositoryPage, setRepositoryPage, repositoryPageSize, setRepositoryPageSize, repositoryFilesExpanded, setRepositoryFilesExpanded, deleteRepositoryKnowledge, setDeleteRepositoryKnowledge, memoryFilter, setMemoryFilter, memorySearch, setMemorySearch, memoryPage, setMemoryPage, memoryPageSize, setMemoryPageSize, repositoryFilePage, setRepositoryFilePage, repositoryFilePageSize, setRepositoryFilePageSize, memoryTypeDraft, setMemoryTypeDraft, memoryContentDraft, setMemoryContentDraft, memoryRepositoryDraft, setMemoryRepositoryDraft, memoryToLink, setMemoryToLink, debugMemoryTypeDraft, setDebugMemoryTypeDraft, debugMemoryContentDraft, setDebugMemoryContentDraft, debugMemoryRepositoryDraft, setDebugMemoryRepositoryDraft, debugMemoryModuleDraft, setDebugMemoryModuleDraft, debugMemoryConfidenceDraft, setDebugMemoryConfidenceDraft, status, setStatus, settingsDraft, setSettingsDraft, question, setQuestion, task, setTask, selectedTaskTemplate, setSelectedTaskTemplate, optimizerTokenBudget, setOptimizerTokenBudget, optimizerBudgetProfile, setOptimizerBudgetProfile, optimizedContext, setOptimizedContext, history, setHistory, activeSource, setActiveSource, busy, setBusy, error, setError, colorScheme, setColorScheme, selectedProject, showToast, reportError, navigate, refresh, totalChunks, tokenSavings, lastSync, linkedRepositoryIds, repositoryCards, filteredRepositories, repositoryPageCount, normalizedRepositoryPage, repositoryPageStart, pagedRepositories, repositoryRangeStart, repositoryRangeEnd, discoveredFiles, repositoryFilePageCount, normalizedRepositoryFilePage, repositoryFilePageStart, pagedRepositoryFiles, repositoryFileRangeStart, repositoryFileRangeEnd, selectedRepositoryFile, repositoryFileDetail, repositoryFileLoading, openRepositoryFile, closeRepositoryFile, copyRepositoryFileContent, sortedDebugSessions, activeDebugSession, activeWorkspaceHealth, workspaceHealthColor, workspaceHealthTitle, currentBudgetProfile, stats, navItems, suggestedQuestions, memoryCounts, filteredMemories, memoryPageCount, normalizedMemoryPage, memoryPageStart, pagedMemories, memoryRangeStart, memoryRangeEnd, staleMemoryCount, recentActivity, upload, addText, ask, applyTaskTemplate, optimizeContext, deleteDocument, reindex, createProject, deleteProject, deleteMemory, rememberMemory, linkMemoryToProject, unlinkMemoryFromProject, saveSettings, linkRepositoryToProject, unlinkRepositoryFromProject, deleteRepository, createDebugSession, openDebugSession, archiveDebugSession, sanitizeDebugData, resolveDebugToken, recordAgentRequest, promoteDebugMemory, applyDebugMemorySuggestion, updateDebugDataRequest, copyDebugText, expandDebugArtifactSlice, compareDebugArtifacts, filteredDebugMappings, pendingDebugRequests, debugMemorySuggestions, latestDebugArtifact, latestDebugText, debugArtifactOptions, tokenMappingFor, artifactTextFor, suggestedSqlFor, activeSafeDebugInstruction, pageCopy, pageTitles, preWrapStyle, wideGridItemStyle } = app;
   return (
           <Stack component="section" gap="md">
             <Paper p="md" radius="sm" withBorder>
@@ -197,7 +199,12 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                       </Table.Thead>
                       <Table.Tbody>
                         {pagedRepositoryFiles.map((file) => (
-                          <Table.Tr key={file.documentId}>
+                          <Table.Tr
+                            key={file.documentId}
+                            onClick={() => openRepositoryFile(file)}
+                            style={{ cursor: file.deleted ? 'default' : 'pointer' }}
+                            title={file.deleted ? 'Deleted indexed record' : 'View indexed content'}
+                          >
                             <Table.Td>
                               <Badge color={file.deleted ? 'gray' : 'green'} variant="light">{file.deleted ? 'deleted' : 'tracked'}</Badge>
                             </Table.Td>
@@ -255,6 +262,54 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                 label="Delete indexed knowledge when deleting a repository"
               />
             </Paper>
+
+            <Drawer
+              opened={selectedRepositoryFile !== null}
+              onClose={closeRepositoryFile}
+              position="right"
+              size="xl"
+              title={selectedRepositoryFile?.filePath ?? 'Indexed file'}
+            >
+              {repositoryFileLoading ? (
+                <Group justify="center" py="xl"><Loader /></Group>
+              ) : repositoryFileDetail && selectedRepositoryFile ? (
+                <Stack gap="md">
+                  <Group gap="xs">
+                    <Badge variant="light">{selectedRepositoryFile.language}</Badge>
+                    <Badge color="gray" variant="outline">{repositoryFileDetail.chunks.length} chunks</Badge>
+                    <Badge color="gray" variant="outline">{formatBytes(selectedRepositoryFile.sizeBytes)}</Badge>
+                  </Group>
+                  <Text size="sm" c="dimmed">{selectedRepositoryFile.repository} · {selectedRepositoryFile.module}</Text>
+                  <Button
+                    variant="light"
+                    leftSection={<Copy size={16} />}
+                    onClick={copyRepositoryFileContent}
+                    disabled={repositoryFileDetail.chunks.length === 0}
+                  >
+                    Copy indexed content
+                  </Button>
+                  {repositoryFileDetail.chunks.map((chunk, index) => (
+                    <Paper key={chunk.id} p="sm" radius="sm" withBorder>
+                      <Text size="xs" c="dimmed" ff="monospace" mb="xs">
+                        Chunk {index + 1} · {chunk.id}{chunk.pageNumber ? ` · page ${chunk.pageNumber}` : ''}
+                      </Text>
+                      <Box
+                        component="pre"
+                        m={0}
+                        ff="monospace"
+                        fz="sm"
+                        style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}
+                      >
+                        {chunk.text}
+                      </Box>
+                    </Paper>
+                  ))}
+                  {repositoryFileDetail.chunks.length === 0 && (
+                    <Text c="dimmed">No indexed content is available for this file.</Text>
+                  )}
+                </Stack>
+              ) : null}
+            </Drawer>
 
           </Stack>
         

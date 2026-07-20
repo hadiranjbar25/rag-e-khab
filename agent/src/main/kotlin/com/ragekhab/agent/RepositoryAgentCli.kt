@@ -59,10 +59,10 @@ private fun runRepositoryAgent(options: CliOptions, log: (String) -> Unit) {
     val repository = root.fileName?.toString()?.takeIf { it.isNotBlank() }
         ?: error("Repository path must have a folder name.")
     val discovered = discoverFiles(root, options.maxFileBytes)
-    val files = buildCompactAgentContext(repository, root, discovered)
+    val files = buildFocusedAgentContext(repository, root, discovered)
     log("RAG-e Khab agent scanning $repository at $root")
     log("Discovered ${discovered.size} indexable file(s)")
-    log("Compact sync will send ${files.size} context artifact(s)")
+    log("Focused sync will send ${files.size} context artifact(s)")
 
     if (options.dryRun) {
         files.take(40).forEach { log("${it.path} (${it.language}, ${it.sizeBytes} bytes)") }
@@ -140,19 +140,6 @@ private data class CliOptions(
                 options = when (arg) {
                     "--server" -> options.copy(server = value().trimEnd('/'))
                     "--path" -> options.copy(path = Path.of(value()))
-                    "--profile" -> {
-                        val profile = value().lowercase()
-                        require(profile == "claude" || profile == "compact" || profile == "agent") {
-                            "Unsupported profile '$profile'. Full source sync is no longer supported; compact agent context is always used."
-                        }
-                        options
-                    }
-                    "--include-source" -> {
-                        require(value().toBooleanStrictOrNull() != true) {
-                            "--include-source is no longer supported; compact agent context is always used."
-                        }
-                        options
-                    }
                     "--full" -> options.copy(full = value().toBooleanStrictOrNull() ?: error("--full must be true or false"))
                     "--dry-run" -> options.copy(dryRun = true)
                     "--max-batch-bytes" -> options.copy(maxBatchBytes = value().toInt().coerceAtLeast(250_000))
@@ -356,7 +343,7 @@ private fun toAgentFile(root: Path, path: Path, maxFileBytes: Long): AgentFile? 
     )
 }
 
-private fun buildCompactAgentContext(repository: String, root: Path, files: List<AgentFile>): List<AgentFile> {
+private fun buildFocusedAgentContext(repository: String, root: Path, files: List<AgentFile>): List<AgentFile> {
     val artifacts = mutableListOf<AgentFile>()
     artifacts += virtualFile(
         path = ".ragekhab/repository-map.md",
@@ -382,7 +369,78 @@ private fun buildCompactAgentContext(repository: String, root: Path, files: List
         .sortedWith(compareBy<AgentFile> { it.path.depth() }.thenBy { it.path })
         .take(40)
         .map { it.copy(path = ".ragekhab/selected/${it.path}") }
+    artifacts += files
+        .filter { it.isSourceFile() && !it.isLockFile() }
+        .sortedBy { it.path }
+        .map { file ->
+            virtualFile(
+                path = ".ragekhab/source/${file.path}.md",
+                content = focusedSourceContext(file),
+            ).copy(module = file.module, language = file.language)
+        }
     return artifacts.distinctBy { it.path }
+}
+
+private fun focusedSourceContext(file: AgentFile): String = buildString {
+    val lines = file.content.lines()
+    val declarations = lines.mapIndexedNotNull { index, line ->
+        file.declarationLabel(line)?.let { index to it }
+    }.distinctBy { it.first }
+    val structuralLines = lines
+        .filter { line ->
+            val trimmed = line.trim()
+            trimmed.startsWith("package ") ||
+                trimmed.startsWith("import ") ||
+                trimmed.startsWith("from ") ||
+                trimmed.startsWith("#include ") ||
+                "require(" in trimmed
+        }
+        .take(30)
+
+    appendLine("# Focused Source: ${file.path}")
+    appendLine()
+    appendLine("- Language: ${file.language}")
+    appendLine("- Module: ${file.module}")
+    appendLine("- Original bytes: ${file.sizeBytes}")
+    appendLine()
+    if (structuralLines.isNotEmpty()) {
+        appendLine("## Package and imports")
+        appendLine()
+        appendLine("```${file.language}")
+        structuralLines.forEach(::appendLine)
+        appendLine("```")
+        appendLine()
+    }
+    appendLine("## Declaration snippets")
+    appendLine()
+    if (declarations.isEmpty()) {
+        appendLine("No declarations detected. Representative source:")
+        appendLine()
+        appendLine("```${file.language}")
+        lines.take(FOCUSED_FALLBACK_LINES).forEach(::appendLine)
+        appendLine("```")
+    } else {
+        declarations.take(MAX_FOCUSED_DECLARATIONS).forEachIndexed { position, (start, label) ->
+            val end = declarations.getOrNull(position + 1)?.first ?: lines.size
+            val section = lines.subList(start, end)
+            val excerpt = if (section.size <= MAX_DECLARATION_LINES) {
+                section
+            } else {
+                section.take(DECLARATION_HEAD_LINES) +
+                    listOf("    // ... implementation omitted ...") +
+                    section.takeLast(DECLARATION_TAIL_LINES)
+            }
+            appendLine("### $label")
+            appendLine()
+            appendLine("```${file.language}")
+            excerpt.forEach(::appendLine)
+            appendLine("```")
+            appendLine()
+        }
+        if (declarations.size > MAX_FOCUSED_DECLARATIONS) {
+            appendLine("${declarations.size - MAX_FOCUSED_DECLARATIONS} additional declarations omitted.")
+        }
+    }
 }
 
 private fun repositoryMap(repository: String, root: Path, files: List<AgentFile>): String = buildString {
@@ -634,40 +692,40 @@ private fun AgentFile.isLockFile(): Boolean {
     return filename in setOf("package-lock.json", "pnpm-lock.yaml", "yarn.lock", "gradle.lockfile")
 }
 
-private fun AgentFile.declarations(): List<String> =
+private fun AgentFile.declarationLabel(line: String): String? =
     when (language) {
-        "kotlin" -> content.lines().mapNotNull {
+        "kotlin" ->
             Regex("""^\s*(data\s+class|class|object|interface|enum\s+class|fun)\s+([A-Za-z_][A-Za-z0-9_]*)""")
-                .find(it)
+                .find(line)
                 ?.let { match -> "${match.groupValues[1].replace(Regex("\\s+"), " ")} ${match.groupValues[2]}" }
-        }
-        "java", "csharp", "cpp", "c", "swift", "scala" -> content.lines().mapNotNull {
+        "java", "csharp", "cpp", "c", "swift", "scala" ->
             Regex("""^\s*(?:public|private|protected|internal|final|sealed|abstract|static|\s)*\s*(class|interface|enum|record|struct|fun)\s+([A-Za-z_][A-Za-z0-9_]*)""")
-                .find(it)
+                .find(line)
                 ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
-        }
-        "typescript", "javascript" -> content.lines().mapNotNull {
+                ?: Regex("""^\s*(?:public|private|protected|internal|static|final|suspend|override|\s)+[\w<>,?.\[\] ]+\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
+                    .find(line)
+                    ?.let { match -> "method ${match.groupValues[1]}" }
+        "typescript", "javascript" ->
             Regex("""^\s*(?:export\s+)?(?:default\s+)?(class|interface|type|function|const|let)\s+([A-Za-z_][A-Za-z0-9_]*)""")
-                .find(it)
+                .find(line)
                 ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
-        }
-        "python" -> content.lines().mapNotNull {
+        "python" ->
             Regex("""^\s*(class|def)\s+([A-Za-z_][A-Za-z0-9_]*)""")
-                .find(it)
+                .find(line)
                 ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
-        }
-        "go" -> content.lines().mapNotNull {
+        "go" ->
             Regex("""^\s*(func|type)\s+([A-Za-z_][A-Za-z0-9_]*)""")
-                .find(it)
+                .find(line)
                 ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
-        }
-        "rust" -> content.lines().mapNotNull {
+        "rust" ->
             Regex("""^\s*(?:pub\s+)?(struct|enum|trait|fn|impl)\s+([A-Za-z_][A-Za-z0-9_]*)""")
-                .find(it)
+                .find(line)
                 ?.let { match -> "${match.groupValues[1]} ${match.groupValues[2]}" }
-        }
-        else -> emptyList()
-    }.distinct()
+        else -> null
+    }
+
+private fun AgentFile.declarations(): List<String> =
+    content.lines().mapNotNull { declarationLabel(it) }.distinct()
 
 private fun inferCommands(files: List<AgentFile>): List<String> {
     val paths = files.map { it.path }.toSet()
@@ -780,7 +838,6 @@ private fun usage(): String =
       --ui                      Open the desktop repository-agent UI
       --server URL              RAG-e Khab backend URL. Default: RAGEKHAB_URL or http://localhost:8060
       --path PATH               Repository path to scan. Default: current directory
-      --profile claude          Compatibility option; compact agent context is always used
       --full true|false         Send full-sync cleanup marker. Default: true
       --max-batch-bytes N       Approximate sync batch size. Default: 4000000
       --max-file-bytes N        Skip files larger than N bytes. Default: 1000000
@@ -805,6 +862,11 @@ private val sourceLanguages = setOf(
     "kotlin", "java", "javascript", "typescript", "python", "go", "rust", "ruby", "php", "csharp",
     "cpp", "c", "swift", "scala", "sql",
 )
+private const val MAX_FOCUSED_DECLARATIONS = 80
+private const val MAX_DECLARATION_LINES = 36
+private const val DECLARATION_HEAD_LINES = 24
+private const val DECLARATION_TAIL_LINES = 8
+private const val FOCUSED_FALLBACK_LINES = 80
 private val ignoredDirectories = setOf(
     ".git", ".gradle", ".idea", ".vscode", "build", "dist", "node_modules", "target", "out",
     ".next", ".nuxt", "coverage", ".cache",

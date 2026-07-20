@@ -5,7 +5,7 @@ RAG-e Khab is a self-hosted memory, knowledge, and safe-debug workspace for AI c
 It gives agents a smaller, safer way to work with your projects:
 
 - store durable project memories and conventions
-- index private notes, documents, and compact repository context
+- index private notes, documents, and coding-focused repository context
 - retrieve task-focused context instead of dumping whole repositories into chat
 - sanitize production-like debugging data before sharing it with an agent
 - expose the workflow through a UI, REST API, and HTTP MCP server
@@ -18,7 +18,7 @@ RAG-e Khab is designed for Codex, Claude Code, Cursor, Gemini CLI, and other MCP
 - **Workspace health**: see whether a workspace has enough sources, memories, fresh repository context, and current guidance for coding agents.
 - **Project memory**: store architecture decisions, conventions, bug fixes, patterns, domain knowledge, and technical debt.
 - **Stale memory detection**: flag repository-scoped memories when related indexed files changed after the memory was saved.
-- **Repository agent**: sync compact repository maps, module summaries, selected docs, build config, and source declarations.
+- **Repository agent**: sync source files for exact coding context plus compact repository maps, module summaries, selected docs, and build configuration.
 - **Context optimizer**: retrieve and trim task-specific context within a token budget.
 - **Budget profiles**: choose small, standard, or deep context budgets without hand-tuning token counts.
 - **Context preview**: show selected sources, token estimates, and selection reasons before using optimized context.
@@ -113,7 +113,7 @@ npm run build
 
 ## Repository Agent
 
-The repository agent is a standalone JAR that runs inside a repository and pushes compact coding-agent context to RAG-e Khab.
+The repository agent is a standalone JAR that runs inside a repository and pushes focused coding context to RAG-e Khab. It combines compact orientation artifacts with declaration-centered implementation excerpts for every source file.
 
 It does not upload every source file. It sends:
 
@@ -154,7 +154,7 @@ Useful options:
 --max-file-bytes N        Skip very large files
 ```
 
-`--profile claude`, `--profile compact`, and `--profile agent` are accepted as compatibility aliases. Compact agent context is always used.
+The sync strategy is intentionally fixed: there is no profile option and no full raw-source upload mode.
 
 Language support:
 

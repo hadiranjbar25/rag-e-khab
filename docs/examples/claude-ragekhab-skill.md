@@ -37,7 +37,7 @@ For coding tasks:
 
 For repository sync:
 1. Use `repository_status`.
-2. Prefer the repo-local `ragekhab-agent.jar` sync workflow. It sends compact repository structure, summaries, key docs, and best-practice context instead of all source files.
+2. Prefer the repo-local `ragekhab-agent.jar` sync workflow. It sends focused declaration and implementation excerpts together with compact repository structure, summaries, key docs, and best-practice context.
 3. Use `scan_repository` only for paths visible to the backend container/process.
 
 ## Token Rules

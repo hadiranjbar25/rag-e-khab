@@ -31,4 +31,38 @@ class Chunker {
                 }
         }
     }
+
+    fun chunkSource(
+        projectId: UUID,
+        projectName: String,
+        documentId: UUID,
+        documentName: String,
+        text: String,
+    ): List<DocumentChunk> {
+        val parts = mutableListOf<String>()
+        val current = StringBuilder()
+        text.lineSequence().forEach { line ->
+            if (current.isNotEmpty() && current.length + line.length + 1 > SOURCE_CHUNK_SIZE) {
+                parts += current.toString().trimEnd()
+                current.clear()
+            }
+            current.appendLine(line)
+        }
+        if (current.isNotBlank()) parts += current.toString().trimEnd()
+        return parts.filter(String::isNotBlank).mapIndexed { index, source ->
+            DocumentChunk(
+                id = "$documentId:${index + 1}",
+                projectId = projectId,
+                projectName = projectName,
+                documentId = documentId,
+                documentName = documentName,
+                pageNumber = null,
+                text = source,
+            )
+        }
+    }
+
+    private companion object {
+        const val SOURCE_CHUNK_SIZE = 2_400
+    }
 }

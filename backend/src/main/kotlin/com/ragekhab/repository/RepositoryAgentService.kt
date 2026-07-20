@@ -366,13 +366,11 @@ class RepositoryAgentService(
         projectName: String,
     ): RepositoryFileMetadata? {
         val displayName = "$repositoryName/$relativePath"
-        val chunks = chunker.chunk(
-            projectId,
-            projectName,
-            documentId,
-            displayName,
-            listOf(ParsedPage(null, text)),
-        )
+        val chunks = if (language in sourceLanguages) {
+            chunker.chunkSource(projectId, projectName, documentId, displayName, text)
+        } else {
+            chunker.chunk(projectId, projectName, documentId, displayName, listOf(ParsedPage(null, text)))
+        }
         if (chunks.isEmpty()) return null
 
         vectorIndex.deleteDocument(documentId)
@@ -545,6 +543,10 @@ class RepositoryAgentService(
     )
 
     private companion object {
+        val sourceLanguages = setOf(
+            "kotlin", "java", "javascript", "typescript", "python", "go", "rust", "ruby", "php",
+            "csharp", "cpp", "c", "swift", "scala", "sql",
+        )
         val specialFiles = setOf("README.md", "AGENTS.md", "CLAUDE.md")
         val markdownExtensions = setOf("md", "markdown")
         val sourceExtensions = setOf(

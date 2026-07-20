@@ -39,6 +39,19 @@ export type DocumentItem = {
   chunkCount: number;
 };
 
+export type DocumentChunk = {
+  id: string;
+  documentId: string;
+  documentName: string;
+  pageNumber?: number;
+  text: string;
+};
+
+export type DocumentDetail = {
+  document: DocumentItem;
+  chunks: DocumentChunk[];
+};
+
 export type SearchResult = {
   projectId: string;
   projectName: string;

@@ -65,6 +65,7 @@ import {
   WorkspaceHealthCheck,
   WorkspaceHealth,
   DocumentItem,
+  DocumentDetail,
   SearchResult,
   ChatResponse,
   OptimizedContext,
@@ -172,6 +173,9 @@ export function useRageKhabAppModel() {
   const [repositoryPage, setRepositoryPage] = useState(1);
   const [repositoryPageSize, setRepositoryPageSize] = useState(9);
   const [repositoryFilesExpanded, setRepositoryFilesExpanded] = useState(false);
+  const [selectedRepositoryFile, setSelectedRepositoryFile] = useState<RepositoryFileMetadata | null>(null);
+  const [repositoryFileDetail, setRepositoryFileDetail] = useState<DocumentDetail | null>(null);
+  const [repositoryFileLoading, setRepositoryFileLoading] = useState(false);
   const [deleteRepositoryKnowledge, setDeleteRepositoryKnowledge] = useState(false);
   const [memoryFilter, setMemoryFilter] = useState<string>('all');
   const [memorySearch, setMemorySearch] = useState('');
@@ -218,6 +222,33 @@ export function useRageKhabAppModel() {
     const message = errorMessage(err, fallback);
     setError(message);
     showToast({ type: 'error', title: fallback, message });
+  };
+
+  const openRepositoryFile = async (file: RepositoryFileMetadata) => {
+    if (file.deleted) return;
+    setSelectedRepositoryFile(file);
+    setRepositoryFileDetail(null);
+    setRepositoryFileLoading(true);
+    try {
+      setRepositoryFileDetail(await request<DocumentDetail>(`/api/documents/${file.documentId}`));
+    } catch (err) {
+      reportError(err, 'Could not load indexed file');
+      setSelectedRepositoryFile(null);
+    } finally {
+      setRepositoryFileLoading(false);
+    }
+  };
+
+  const closeRepositoryFile = () => {
+    setSelectedRepositoryFile(null);
+    setRepositoryFileDetail(null);
+  };
+
+  const copyRepositoryFileContent = async () => {
+    const content = repositoryFileDetail?.chunks.map((chunk) => chunk.text).join('\n\n') ?? '';
+    if (!content) return;
+    await navigator.clipboard.writeText(content);
+    showToast({ type: 'success', title: 'Indexed content copied' });
   };
 
   const navigate = (nextView: View) => {
@@ -1194,6 +1225,12 @@ export function useRageKhabAppModel() {
     setRepositoryPageSize,
     repositoryFilesExpanded,
     setRepositoryFilesExpanded,
+    selectedRepositoryFile,
+    repositoryFileDetail,
+    repositoryFileLoading,
+    openRepositoryFile,
+    closeRepositoryFile,
+    copyRepositoryFileContent,
     deleteRepositoryKnowledge,
     setDeleteRepositoryKnowledge,
     memoryFilter,

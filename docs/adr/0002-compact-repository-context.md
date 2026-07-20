@@ -10,7 +10,7 @@ Coding agents need repository context, but sending whole source trees wastes tok
 
 ## Decision
 
-The repository agent sends compact coding-agent context by default and does not expose a full raw-source sync mode in the UI.
+The repository agent uses one focused sync strategy. It sends repository maps, module summaries, selected documentation, build configuration, source declarations, imports, and bounded implementation excerpts around detected declarations.
 
 The synced context includes repository maps, module summaries, source declarations, selected docs, and build/test configuration. Exact raw source should be read locally by the coding agent when an edit requires it.
 
@@ -24,4 +24,7 @@ Repository scans index common source and config formats across Kotlin, Java, Jav
 - Indexed knowledge is better suited for task routing and orientation.
 - Exact implementation edits still require local file reads.
 - Polyglot repositories get useful symbol-level orientation, while exact edits still depend on local source reads or explicit snippets.
-- Backward-compatible CLI profile aliases may remain, but compact context is the only supported repository-agent mode.
+- The CLI and UI do not expose sync profiles.
+- Focused source artifacts preserve line breaks and include small declarations intact.
+- Large declarations keep bounded opening and closing implementation context instead of uploading the entire source file.
+- Retrieval still returns only task-relevant chunks within the requested token budget.
