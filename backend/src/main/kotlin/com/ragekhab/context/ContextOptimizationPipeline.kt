@@ -29,11 +29,13 @@ class ContextOptimizationPipeline(
         val candidates = searchService.search(task, candidateLimit, projectId)
             .filterByScope(scope, module)
         val taskTerms = task.normalizedTerms()
-        val ranked = candidates
+        val scored = candidates
             .distinctByContent()
             .map { it.toCandidate(taskTerms) }
-            .filter { it.valueScore >= 0.16 }
             .sortedWith(compareByDescending<OptimizedCandidate> { it.valueScore }.thenBy { it.result.documentName })
+        val ranked = scored
+            .filter { it.valueScore >= 0.16 }
+            .ifEmpty { scored.take(3) }
         val selected = selectWithinBudget(ranked, maxTokens)
 
         return ContextOptimizationDraft(
@@ -90,16 +92,37 @@ class ContextOptimizationPipeline(
     }
 
     private fun List<SearchResult>.filterByScope(repository: String?, module: String?): List<SearchResult> {
-        val filters = listOfNotNull(repository, module).map { it.lowercase() }
-        if (filters.isEmpty()) return this
-        val filtered = filter { result ->
-            filters.any { filter ->
-                result.projectName.lowercase().contains(filter) ||
-                    result.documentName.lowercase().contains(filter) ||
-                    result.text.lowercase().contains(filter)
-            }
+        if (repository == null && module == null) return this
+        return filter { result ->
+            val repositoryMatches = repository == null || result.matchesRepository(repository)
+            val moduleMatches = module == null || result.matchesModule(module)
+            repositoryMatches && moduleMatches
         }
-        return filtered.ifEmpty { this }
+    }
+
+    private fun SearchResult.matchesRepository(repository: String): Boolean {
+        val normalized = repository.trim().lowercase()
+        val documentRepository = documentName.substringBefore('/', "").lowercase()
+        val memoryRepository = text.lineSequence()
+            .firstOrNull { it.startsWith("Repository:", ignoreCase = true) }
+            ?.substringAfter(':')
+            ?.trim()
+            ?.lowercase()
+        return documentRepository == normalized || memoryRepository == normalized
+    }
+
+    private fun SearchResult.matchesModule(module: String): Boolean {
+        val normalized = module.trim().trim('/').lowercase()
+        val documentPath = documentName.substringAfter('/', documentName).lowercase()
+        val memoryModule = text.lineSequence()
+            .firstOrNull { it.startsWith("Module:", ignoreCase = true) }
+            ?.substringAfter(':')
+            ?.trim()
+            ?.lowercase()
+        return documentPath.startsWith("$normalized/") ||
+            documentPath.contains("/$normalized/") ||
+            memoryModule == normalized ||
+            memoryModule?.startsWith("$normalized/") == true
     }
 
     private fun List<SearchResult>.distinctByContent(): List<SearchResult> {

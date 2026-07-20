@@ -56,7 +56,8 @@ private fun runRepositoryAgent(options: CliOptions, log: (String) -> Unit) {
     val root = options.path.toAbsolutePath().normalize()
     require(Files.isDirectory(root)) { "Repository path does not exist or is not a directory: $root" }
 
-    val repository = options.repository ?: root.fileName?.toString()?.takeIf { it.isNotBlank() } ?: "repository"
+    val repository = root.fileName?.toString()?.takeIf { it.isNotBlank() }
+        ?: error("Repository path must have a folder name.")
     val discovered = discoverFiles(root, options.maxFileBytes)
     val files = buildCompactAgentContext(repository, root, discovered)
     log("RAG-e Khab agent scanning $repository at $root")
@@ -118,7 +119,6 @@ private fun runRepositoryAgent(options: CliOptions, log: (String) -> Unit) {
 
 private data class CliOptions(
     val server: String = System.getenv("RAGEKHAB_URL") ?: "http://localhost:8060",
-    val repository: String? = null,
     val path: Path = Path.of("."),
     val full: Boolean = true,
     val dryRun: Boolean = false,
@@ -139,7 +139,6 @@ private data class CliOptions(
                 }
                 options = when (arg) {
                     "--server" -> options.copy(server = value().trimEnd('/'))
-                    "--repository", "--name" -> options.copy(repository = value())
                     "--path" -> options.copy(path = Path.of(value()))
                     "--profile" -> {
                         val profile = value().lowercase()
@@ -171,7 +170,6 @@ private data class CliOptions(
 private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
     private val preferences = Preferences.userNodeForPackage(RepositoryAgentUi::class.java)
     private val serverField = JTextField(preferences.get("server", System.getenv("RAGEKHAB_URL") ?: "http://localhost:8060"))
-    private val repositoryField = JTextField()
     private val pathBox = JComboBox(recentPaths().toTypedArray()).apply {
         isEditable = true
         selectedItem = Path.of(".").toAbsolutePath().normalize().toString()
@@ -205,7 +203,6 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
         val panel = JPanel(GridBagLayout())
         var row = 0
         panel.addRow(row++, "Server", serverField)
-        panel.addRow(row++, "Repository name", repositoryField)
         panel.addPathRow(row++)
         panel.addRow(row++, "Max batch bytes", maxBatchBytesField)
         panel.addRow(row++, "Max file bytes", maxFileBytesField)
@@ -263,7 +260,6 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
         chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             pathBox.selectedItem = chooser.selectedFile.toPath().toAbsolutePath().normalize().toString()
-            repositoryField.text = repositoryField.text.ifBlank { chooser.selectedFile.name }
         }
     }
 
@@ -276,7 +272,6 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
         }
         val options = CliOptions(
             server = server,
-            repository = repositoryField.text.trim().takeIf { it.isNotBlank() },
             path = Path.of(path),
             full = fullCheck.isSelected,
             dryRun = dryRunCheck.isSelected,
@@ -779,13 +774,11 @@ private fun usage(): String =
 
     Usage:
       java -jar ragekhab-agent.jar
-      java -jar ragekhab-agent.jar --server http://localhost:8060 --repository my-repo --path .
+      java -jar ragekhab-agent.jar --server http://localhost:8060 --path .
 
     Options:
       --ui                      Open the desktop repository-agent UI
       --server URL              RAG-e Khab backend URL. Default: RAGEKHAB_URL or http://localhost:8060
-      --repository NAME         Stable repository name. Default: scanned folder name
-      --name NAME               Alias for --repository
       --path PATH               Repository path to scan. Default: current directory
       --profile claude          Compatibility option; compact agent context is always used
       --full true|false         Send full-sync cleanup marker. Default: true

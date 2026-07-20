@@ -37,7 +37,7 @@ class RepositoryAgentService(
         val repositoryName = request.repository.trim().takeIf { it.isNotBlank() }
             ?: error("Repository name is required.")
         val root = request.repositoryRoot?.trim()?.takeIf { it.isNotBlank() } ?: "agent:$repositoryName"
-        val project = request.projectId?.let { projectService.requireProject(it) } ?: projectService.defaultProject()
+        val project = resolveProject(request.projectId, repositoryName, root)
         val indexed = mutableListOf<RepositoryFileMetadata>()
         var unchanged = 0
         var skipped = 0
@@ -50,7 +50,8 @@ class RepositoryAgentService(
             }
             val documentId = stableDocumentId(repositoryName, relativePath)
             val previous = metadataStore.get(documentId)
-            if (previous != null && !previous.deleted && previous.contentHash == file.contentHash) {
+            val previousProjectId = previous?.let { documentRepository.get(it.documentId)?.document?.projectId }
+            if (previous != null && !previous.deleted && previous.contentHash == file.contentHash && previousProjectId == project.id) {
                 unchanged += 1
                 return@forEach
             }
@@ -115,7 +116,7 @@ class RepositoryAgentService(
         val startedAt = Instant.now()
         val root = resolveRoot(request.path)
         val repositoryName = resolveRepositoryName(request, root)
-        val project = request.projectId?.let { projectService.requireProject(it) } ?: projectService.defaultProject()
+        val project = resolveProject(request.projectId, repositoryName, root.invariantSeparatorsPathString)
         val discovered = discoverFiles(root)
         val discoveredIds = discovered.map { it.documentId }.toSet()
         val indexed = mutableListOf<RepositoryFileMetadata>()
@@ -503,6 +504,28 @@ class RepositoryAgentService(
 
     private fun stableDocumentId(repository: String, relativePath: String): UUID =
         UUID.nameUUIDFromBytes("$repository:$relativePath".toByteArray(StandardCharsets.UTF_8))
+
+    private fun resolveProject(explicitProjectId: UUID?, repositoryName: String, repositoryRoot: String): com.ragekhab.project.Project {
+        explicitProjectId?.let { return projectService.requireProject(it) }
+
+        val repositoryId = RepositoryCatalogStore.stableRepositoryId(repositoryName, repositoryRoot)
+        repositoryCatalog.linksForRepository(repositoryId)
+            .asSequence()
+            .mapNotNull { projectService.get(it.projectId) }
+            .firstOrNull { it.id != com.ragekhab.project.ProjectRepository.DEFAULT_PROJECT_ID }
+            ?.let { return it }
+
+        val normalizedRepository = repositoryName.normalizedIdentity()
+        return projectService.list()
+            .firstOrNull {
+                it.id != com.ragekhab.project.ProjectRepository.DEFAULT_PROJECT_ID &&
+                    it.name.normalizedIdentity() == normalizedRepository
+            }
+            ?: projectService.defaultProject()
+    }
+
+    private fun String.normalizedIdentity(): String =
+        lowercase().filter(Char::isLetterOrDigit)
 
     private fun sha256(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)

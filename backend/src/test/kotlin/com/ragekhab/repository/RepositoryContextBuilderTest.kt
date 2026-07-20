@@ -7,6 +7,7 @@ import com.ragekhab.document.DocumentChunk
 import com.ragekhab.document.DocumentFormat
 import com.ragekhab.document.DocumentRepository
 import com.ragekhab.document.KnowledgeDocument
+import com.ragekhab.project.CreateProjectRequest
 import com.ragekhab.project.ProjectRepository
 import com.ragekhab.project.ProjectService
 import com.ragekhab.search.SearchResult
@@ -177,6 +178,38 @@ class RepositoryContextBuilderTest {
         assertEquals(1, changed.unchangedFiles)
         assertEquals(1, deleted.deletedFiles)
         assertTrue(vectorIndex.deletedDocuments.isNotEmpty())
+    }
+
+    @Test
+    fun `sync infers project from normalized repository folder name`() {
+        val state = testStateStore()
+        val documentRepository = DocumentRepository(state)
+        val projectService = ProjectService(ProjectRepository(state), documentRepository)
+        val workspace = projectService.create(CreateProjectRequest("RAG-E-Khab"))
+        val service = RepositoryAgentService(
+            settingsService = RuntimeSettingsService(RagEKhabProperties(), state),
+            metadataStore = RepositoryMetadataStore(state),
+            repositoryCatalog = RepositoryCatalogStore(state),
+            chunker = Chunker(),
+            documentRepository = documentRepository,
+            vectorIndex = FakeVectorIndex(),
+            projectService = projectService,
+        )
+        val file = RepositorySyncFile(
+            path = ".ragekhab/repository-map.md",
+            module = ".ragekhab",
+            language = "markdown",
+            lastModifiedAt = Instant.parse("2026-07-20T12:00:00Z"),
+            sizeBytes = 24,
+            contentHash = "same-content",
+            content = "# Repository Context",
+        )
+
+        val synced = service.sync(RepositorySyncRequest(repository = "RAGEKHAB", files = listOf(file)))
+
+        assertEquals(1, synced.indexedFiles)
+        assertEquals(0, synced.unchangedFiles)
+        assertEquals(workspace.id, documentRepository.list().single().projectId)
     }
 
     private fun contextFixture(): ContextFixture {

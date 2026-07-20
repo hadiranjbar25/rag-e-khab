@@ -8,38 +8,70 @@ import java.util.UUID
 class DocumentRepository(
     private val state: AppStateStore,
 ) {
+    init {
+        migrateLegacyDocuments()
+    }
+
     fun save(document: KnowledgeDocument, documentChunks: List<DocumentChunk>): KnowledgeDocument {
-        state.put(STORE, document.id, StoredDocument(document, documentChunks))
+        state.put(DOCUMENTS_STORE, document.id, document)
+        state.put(CHUNKS_STORE, document.id, StoredDocumentChunks(documentChunks))
         return document
     }
 
     fun list(): List<KnowledgeDocument> =
-        stored().map { it.document }.sortedByDescending { it.createdAt }
+        documents().sortedByDescending { it.createdAt }
 
     fun list(projectId: UUID): List<KnowledgeDocument> =
-        stored().map { it.document }.filter { it.projectId == projectId }.sortedByDescending { it.createdAt }
+        documents().filter { it.projectId == projectId }.sortedByDescending { it.createdAt }
 
     fun get(id: UUID): DocumentDetail? {
-        val stored = state.get(STORE, id, StoredDocument::class.java) ?: return null
-        return DocumentDetail(stored.document, stored.chunks)
+        val document = state.get(DOCUMENTS_STORE, id, KnowledgeDocument::class.java) ?: return null
+        val chunks = state.get(CHUNKS_STORE, id, StoredDocumentChunks::class.java)?.chunks.orEmpty()
+        return DocumentDetail(document, chunks)
     }
 
-    fun allChunks(): List<DocumentChunk> = stored().flatMap { it.chunks }
+    fun allChunks(): List<DocumentChunk> =
+        state.list(CHUNKS_STORE, StoredDocumentChunks::class.java).flatMap { it.chunks }
 
-    fun delete(id: UUID): Boolean = state.delete(STORE, id)
+    fun delete(id: UUID): Boolean {
+        val deletedDocument = state.delete(DOCUMENTS_STORE, id)
+        state.delete(CHUNKS_STORE, id)
+        return deletedDocument
+    }
 
     fun clear() {
-        state.deleteStore(STORE)
+        state.deleteStore(DOCUMENTS_STORE)
+        state.deleteStore(CHUNKS_STORE)
+        state.deleteStore(LEGACY_STORE)
     }
 
-    private fun stored(): List<StoredDocument> = state.list(STORE, StoredDocument::class.java)
+    fun countsByProject(): Map<UUID, Int> =
+        documents().groupingBy { it.projectId }.eachCount()
+
+    private fun documents(): List<KnowledgeDocument> =
+        state.list(DOCUMENTS_STORE, KnowledgeDocument::class.java)
+
+    private fun migrateLegacyDocuments() {
+        if (state.isEmpty(LEGACY_STORE)) return
+        state.list(LEGACY_STORE, StoredDocument::class.java).forEach { stored ->
+            state.put(DOCUMENTS_STORE, stored.document.id, stored.document)
+            state.put(CHUNKS_STORE, stored.document.id, StoredDocumentChunks(stored.chunks))
+        }
+        state.deleteStore(LEGACY_STORE)
+    }
 
     private companion object {
-        const val STORE = "documents"
+        const val LEGACY_STORE = "documents"
+        const val DOCUMENTS_STORE = "document-metadata"
+        const val CHUNKS_STORE = "document-chunks"
     }
 }
 
 data class StoredDocument(
     val document: KnowledgeDocument,
+    val chunks: List<DocumentChunk>,
+)
+
+data class StoredDocumentChunks(
     val chunks: List<DocumentChunk>,
 )

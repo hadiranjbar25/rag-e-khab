@@ -28,9 +28,7 @@ class ProjectService(
 
     fun list(): List<Project> {
         projectRepository.ensureDefault()
-        val counts = documentRepository.list()
-            .groupingBy { it.projectId }
-            .eachCount()
+        val counts = documentRepository.countsByProject()
         return projectRepository.list().map { project ->
             project.copy(documentCount = counts[project.id] ?: 0)
         }

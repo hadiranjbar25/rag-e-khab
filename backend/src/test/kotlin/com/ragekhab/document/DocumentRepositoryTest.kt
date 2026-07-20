@@ -66,4 +66,39 @@ class DocumentRepositoryTest {
 
         assertNull(DocumentRepository(state).get(documentId))
     }
+
+    @Test
+    fun `legacy combined records migrate without losing documents or chunks`() {
+        val state = testStateStore()
+        val documentId = UUID.randomUUID()
+        val projectId = UUID.randomUUID()
+        val document = KnowledgeDocument(
+            id = documentId,
+            projectId = projectId,
+            projectName = "General",
+            name = "legacy.txt",
+            format = DocumentFormat.TEXT,
+            contentType = "text/plain",
+            sizeBytes = 6,
+            createdAt = Instant.parse("2026-06-21T10:15:30Z"),
+            chunkCount = 1,
+        )
+        val chunk = DocumentChunk(
+            id = "$documentId:0",
+            projectId = projectId,
+            projectName = "General",
+            documentId = documentId,
+            documentName = document.name,
+            pageNumber = null,
+            text = "legacy",
+        )
+        state.put("documents", documentId, StoredDocument(document, listOf(chunk)))
+
+        val repository = DocumentRepository(state)
+
+        assertEquals(listOf(document), repository.list())
+        assertEquals(listOf(chunk), repository.get(documentId)?.chunks)
+        assertEquals(mapOf(projectId to 1), repository.countsByProject())
+        assertEquals(true, state.isEmpty("documents"))
+    }
 }

@@ -152,6 +152,46 @@ class ContextOptimizerServiceTest {
         assertTrue(result.preview.single().estimatedTokens > 0)
     }
 
+    @Test
+    fun `repository scope never falls back to another repository`() {
+        val state = testStateStore()
+        val documentRepository = DocumentRepository(state)
+        val pipeline = ContextOptimizationPipeline(
+            searchService = SemanticSearchService(
+                repository = documentRepository,
+                properties = RagEKhabProperties(),
+                vectorIndex = FakeVectorIndex(
+                    listOf(
+                        searchResult().copy(
+                            documentName = "my-repo/.ragekhab/selected/README.md",
+                            score = 0.99,
+                            text = "GET projects API and repository agent documentation.",
+                        ),
+                        searchResult().copy(
+                            documentName = "RAGEKHAB/.ragekhab/modules/backend.md",
+                            score = 0.80,
+                            text = "ProjectService calls DocumentRepository to list projects.",
+                        ),
+                    ),
+                ),
+            ),
+            projectService = ProjectService(ProjectRepository(state), documentRepository),
+            properties = RagEKhabProperties(),
+            settingsService = RuntimeSettingsService(RagEKhabProperties(), state),
+        )
+
+        val result = RetrievalOnlyContextOptimizer(pipeline).optimize(
+            ContextOptimizationRequest(
+                task = "Diagnose projects API latency in ProjectService",
+                repository = "RAGEKHAB",
+                maxTokens = 1_200,
+            ),
+        )
+
+        assertEquals(listOf("RAGEKHAB/.ragekhab/modules/backend.md"), result.sources)
+        assertTrue(result.preview.none { it.source.startsWith("my-repo/") })
+    }
+
     private class FakeModeOptimizer(
         override val mode: ContextOptimizerMode,
         private val compressionLabel: String,

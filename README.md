@@ -141,14 +141,12 @@ Run from a repository:
 ```bash
 java -jar /path/to/ragekhab-agent.jar \
   --server http://localhost:8060 \
-  --repository billing-api \
   --path .
 ```
 
 Useful options:
 
 ```text
---repository NAME         Stable repository name. Default: scanned folder name
 --path PATH               Repository path to scan. Default: current directory
 --full true|false         Delete files that disappeared from the repo when true. Default: true
 --dry-run                 Show discovered context artifacts without sending them
