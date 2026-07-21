@@ -10,11 +10,12 @@ class Chunker {
         return pages.flatMap { page ->
             page.text
                 .split(Regex("(?<=\\.)\\s+|\\n{2,}"))
+                .flatMap { splitOversized(it.trim(), GENERIC_CHUNK_SIZE) }
                 .fold(mutableListOf<String>()) { acc, part ->
                     val normalized = part.trim()
                     if (normalized.isBlank()) return@fold acc
                     val last = acc.lastOrNull()
-                    if (last == null || last.length + normalized.length > 1_200) acc.add(normalized) else acc[acc.lastIndex] = "$last $normalized"
+                    if (last == null || last.length + normalized.length > GENERIC_CHUNK_SIZE) acc.add(normalized) else acc[acc.lastIndex] = "$last $normalized"
                     acc
                 }
                 .map { text ->
@@ -30,6 +31,29 @@ class Chunker {
                     )
                 }
         }
+    }
+
+    private fun splitOversized(text: String, limit: Int): List<String> {
+        if (text.length <= limit) return listOf(text)
+        val chunks = mutableListOf<String>()
+        val current = StringBuilder()
+        text.lineSequence().forEach { line ->
+            if (line.length > limit) {
+                if (current.isNotEmpty()) {
+                    chunks += current.toString().trimEnd()
+                    current.clear()
+                }
+                line.chunked(limit).forEach(chunks::add)
+            } else {
+                if (current.isNotEmpty() && current.length + line.length + 1 > limit) {
+                    chunks += current.toString().trimEnd()
+                    current.clear()
+                }
+                current.appendLine(line)
+            }
+        }
+        if (current.isNotBlank()) chunks += current.toString().trimEnd()
+        return chunks
     }
 
     fun chunkSource(
@@ -63,6 +87,7 @@ class Chunker {
     }
 
     private companion object {
-        const val SOURCE_CHUNK_SIZE = 2_400
+        const val GENERIC_CHUNK_SIZE = 1_200
+        const val SOURCE_CHUNK_SIZE = 1_200
     }
 }

@@ -19,7 +19,6 @@ import java.time.Instant
 import java.util.prefs.Preferences
 import javax.swing.BorderFactory
 import javax.swing.JButton
-import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JFileChooser
 import javax.swing.JFrame
@@ -161,10 +160,6 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
         isEditable = true
         selectedItem = Path.of(".").toAbsolutePath().normalize().toString()
     }
-    private val fullCheck = JCheckBox("Full sync cleanup", true)
-    private val dryRunCheck = JCheckBox("Dry run")
-    private val maxBatchBytesField = JTextField("4000000")
-    private val maxFileBytesField = JTextField("1000000")
     private val runButton = JButton("Run sync")
     private val output = JTextArea().apply {
         isEditable = false
@@ -175,7 +170,7 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
 
     init {
         defaultCloseOperation = WindowConstants.EXIT_ON_CLOSE
-        minimumSize = Dimension(620, 520)
+        minimumSize = Dimension(620, 430)
         contentPane = JPanel(BorderLayout(12, 12)).apply {
             border = BorderFactory.createEmptyBorder(14, 14, 14, 14)
             add(formPanel(), BorderLayout.NORTH)
@@ -191,9 +186,7 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
         var row = 0
         panel.addRow(row++, "Server", serverField)
         panel.addPathRow(row++)
-        panel.addRow(row++, "Max batch bytes", maxBatchBytesField)
-        panel.addRow(row++, "Max file bytes", maxFileBytesField)
-        panel.addOptionsRow(row++)
+        panel.addRunRow(row)
         return panel
     }
 
@@ -210,13 +203,8 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
         })
     }
 
-    private fun JPanel.addOptionsRow(row: Int) {
-        add(JLabel("Options"), labelConstraints(row))
-        add(JPanel().apply {
-            add(fullCheck)
-            add(dryRunCheck)
-            add(runButton)
-        }, fieldConstraints(row, gridWidth = 2, weightX = 1.0))
+    private fun JPanel.addRunRow(row: Int) {
+        add(runButton, fieldConstraints(row, gridWidth = 2, weightX = 1.0))
     }
 
     private fun JPanel.addRow(row: Int, label: String, field: java.awt.Component) {
@@ -260,10 +248,6 @@ private class RepositoryAgentUi : JFrame("RAG-e Khab Repository Agent") {
         val options = CliOptions(
             server = server,
             path = Path.of(path),
-            full = fullCheck.isSelected,
-            dryRun = dryRunCheck.isSelected,
-            maxBatchBytes = maxBatchBytesField.text.trim().toIntOrNull()?.coerceAtLeast(250_000) ?: 4_000_000,
-            maxFileBytes = maxFileBytesField.text.trim().toLongOrNull()?.coerceAtLeast(10_000) ?: 1_000_000,
         )
         remember(server, path)
         output.text = ""
@@ -402,6 +386,7 @@ private fun focusedSourceContext(file: AgentFile): String = buildString {
     appendLine("- Language: ${file.language}")
     appendLine("- Module: ${file.module}")
     appendLine("- Original bytes: ${file.sizeBytes}")
+    appendLine("- Context format: $CONTEXT_FORMAT_VERSION")
     appendLine()
     if (structuralLines.isNotEmpty()) {
         appendLine("## Package and imports")
@@ -411,36 +396,40 @@ private fun focusedSourceContext(file: AgentFile): String = buildString {
         appendLine("```")
         appendLine()
     }
-    appendLine("## Declaration snippets")
+    appendLine("## Symbols")
     appendLine()
     if (declarations.isEmpty()) {
-        appendLine("No declarations detected. Representative source:")
-        appendLine()
-        appendLine("```${file.language}")
-        lines.take(FOCUSED_FALLBACK_LINES).forEach(::appendLine)
-        appendLine("```")
+        appendLine("No declarations detected. Open the original file for implementation details.")
     } else {
-        declarations.take(MAX_FOCUSED_DECLARATIONS).forEachIndexed { position, (start, label) ->
-            val end = declarations.getOrNull(position + 1)?.first ?: lines.size
-            val section = lines.subList(start, end)
-            val excerpt = if (section.size <= MAX_DECLARATION_LINES) {
-                section
-            } else {
-                section.take(DECLARATION_HEAD_LINES) +
-                    listOf("    // ... implementation omitted ...") +
-                    section.takeLast(DECLARATION_TAIL_LINES)
-            }
-            appendLine("### $label")
-            appendLine()
-            appendLine("```${file.language}")
-            excerpt.forEach(::appendLine)
-            appendLine("```")
-            appendLine()
+        appendLine("```${file.language}")
+        declarations.take(MAX_FOCUSED_DECLARATIONS).forEach { (start, label) ->
+            appendLine("// $label")
+            declarationSignature(file, lines, start).forEach(::appendLine)
         }
+        appendLine("```")
         if (declarations.size > MAX_FOCUSED_DECLARATIONS) {
+            appendLine()
             appendLine("${declarations.size - MAX_FOCUSED_DECLARATIONS} additional declarations omitted.")
         }
     }
+}
+
+private fun declarationSignature(file: AgentFile, lines: List<String>, start: Int): List<String> {
+    val signature = mutableListOf<String>()
+    for (line in lines.drop(start).take(MAX_SIGNATURE_LINES)) {
+        val trimmed = line.trim()
+        if (trimmed.isBlank() && signature.isNotEmpty()) break
+        val expressionBody = file.language == "kotlin" && Regex("""\)\s*(?::[^=]+)?=""").containsMatchIn(trimmed)
+        val compact = when {
+            file.language in setOf("typescript", "javascript") && "=>" in trimmed -> trimmed.substringBefore("=>").trimEnd() + " =>"
+            "{" in trimmed -> trimmed.substringBefore("{").trimEnd()
+            expressionBody -> trimmed.substringBefore("=").trimEnd()
+            else -> trimmed
+        }
+        if (compact.isNotBlank()) signature += compact.take(MAX_SIGNATURE_CHARACTERS)
+        if ("{" in trimmed || expressionBody || ";" in trimmed) break
+    }
+    return signature.ifEmpty { listOf(lines[start].trim().take(MAX_SIGNATURE_CHARACTERS)) }
 }
 
 private fun repositoryMap(repository: String, root: Path, files: List<AgentFile>): String = buildString {
@@ -650,7 +639,8 @@ private fun String.compact(): String =
     replace(Regex("\\s+"), " ").take(240)
 
 private fun virtualFile(path: String, content: String): AgentFile {
-    val bytes = content.toByteArray(StandardCharsets.UTF_8)
+    val versionedContent = "<!-- RAG-e Khab context: $CONTEXT_FORMAT_VERSION -->\n$content"
+    val bytes = versionedContent.toByteArray(StandardCharsets.UTF_8)
     return AgentFile(
         path = path,
         module = ".ragekhab",
@@ -658,7 +648,7 @@ private fun virtualFile(path: String, content: String): AgentFile {
         lastModifiedAt = Instant.now(),
         sizeBytes = bytes.size.toLong(),
         contentHash = sha256(bytes),
-        content = content,
+        content = versionedContent,
     )
 }
 
@@ -695,7 +685,7 @@ private fun AgentFile.isLockFile(): Boolean {
 private fun AgentFile.declarationLabel(line: String): String? =
     when (language) {
         "kotlin" ->
-            Regex("""^\s*(data\s+class|class|object|interface|enum\s+class|fun)\s+([A-Za-z_][A-Za-z0-9_]*)""")
+            Regex("""^\s*(?:(?:public|private|protected|internal|expect|actual|final|open|abstract|sealed|const|external|override|lateinit|tailrec|vararg|suspend|inner|enum|annotation|companion|inline|value|infix|operator|data)\s+)*(data\s+class|class|object|interface|enum\s+class|fun)\s+(?:<[^>]+>\s*)?([A-Za-z_][A-Za-z0-9_]*)""")
                 .find(line)
                 ?.let { match -> "${match.groupValues[1].replace(Regex("\\s+"), " ")} ${match.groupValues[2]}" }
         "java", "csharp", "cpp", "c", "swift", "scala" ->
@@ -862,11 +852,10 @@ private val sourceLanguages = setOf(
     "kotlin", "java", "javascript", "typescript", "python", "go", "rust", "ruby", "php", "csharp",
     "cpp", "c", "swift", "scala", "sql",
 )
-private const val MAX_FOCUSED_DECLARATIONS = 80
-private const val MAX_DECLARATION_LINES = 36
-private const val DECLARATION_HEAD_LINES = 24
-private const val DECLARATION_TAIL_LINES = 8
-private const val FOCUSED_FALLBACK_LINES = 80
+private const val MAX_FOCUSED_DECLARATIONS = 60
+private const val CONTEXT_FORMAT_VERSION = "symbol-map-v3"
+private const val MAX_SIGNATURE_LINES = 6
+private const val MAX_SIGNATURE_CHARACTERS = 240
 private val ignoredDirectories = setOf(
     ".git", ".gradle", ".idea", ".vscode", "build", "dist", "node_modules", "target", "out",
     ".next", ".nuxt", "coverage", ".cache",

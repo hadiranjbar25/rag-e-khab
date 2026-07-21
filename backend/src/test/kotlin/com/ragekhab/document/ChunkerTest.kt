@@ -7,6 +7,20 @@ import kotlin.test.assertTrue
 
 class ChunkerTest {
     @Test
+    fun `generic chunks split oversized line-oriented sections`() {
+        val chunks = Chunker().chunk(
+            projectId = UUID.randomUUID(),
+            projectName = "test",
+            documentId = UUID.randomUUID(),
+            documentName = "source-index.md",
+            pages = listOf(ParsedPage(null, (1..300).joinToString("\n") { "- indexed/source/file-$it.kt" })),
+        )
+
+        assertTrue(chunks.size > 1)
+        assertTrue(chunks.all { it.text.length <= 1_200 })
+    }
+
+    @Test
     fun `source chunks preserve code line breaks`() {
         val documentId = UUID.randomUUID()
         val source = """

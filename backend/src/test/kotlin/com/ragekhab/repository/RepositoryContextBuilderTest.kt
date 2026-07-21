@@ -212,6 +212,73 @@ class RepositoryContextBuilderTest {
         assertEquals(workspace.id, documentRepository.list().single().projectId)
     }
 
+    @Test
+    fun `status hard deletes orphaned repository metadata`() {
+        val state = testStateStore()
+        val documentRepository = DocumentRepository(state)
+        val metadataStore = RepositoryMetadataStore(state)
+        val service = repositoryAgentService(state, metadataStore, documentRepository)
+        val documentId = UUID.randomUUID()
+        metadataStore.save(repositoryMetadata(documentId, "RAGEKHAB", "/repo", "missing.kt"))
+
+        val status = service.status()
+
+        assertTrue(status.files.isEmpty())
+        assertEquals(0, status.trackedFiles)
+        assertEquals(null, metadataStore.get(documentId))
+    }
+
+    @Test
+    fun `complete sync removes active aliases for the same repository root`() {
+        val state = testStateStore()
+        val documentRepository = DocumentRepository(state)
+        val metadataStore = RepositoryMetadataStore(state)
+        val service = repositoryAgentService(state, metadataStore, documentRepository)
+        val staleId = UUID.randomUUID()
+        metadataStore.save(repositoryMetadata(staleId, "old-name", "/repo", ".ragekhab/repository-map.md"))
+
+        val result = service.sync(
+            RepositorySyncRequest(
+                repository = "RAGEKHAB",
+                repositoryRoot = "/repo",
+                full = true,
+                complete = true,
+                allPaths = emptyList(),
+            ),
+        )
+
+        assertEquals(1, result.deletedFiles)
+        assertEquals(null, metadataStore.get(staleId))
+    }
+
+    private fun repositoryAgentService(
+        state: com.ragekhab.storage.AppStateStore,
+        metadataStore: RepositoryMetadataStore,
+        documentRepository: DocumentRepository,
+    ): RepositoryAgentService = RepositoryAgentService(
+        settingsService = RuntimeSettingsService(RagEKhabProperties(), state),
+        metadataStore = metadataStore,
+        repositoryCatalog = RepositoryCatalogStore(state),
+        chunker = Chunker(),
+        documentRepository = documentRepository,
+        vectorIndex = FakeVectorIndex(),
+        projectService = ProjectService(ProjectRepository(state), documentRepository),
+    )
+
+    private fun repositoryMetadata(documentId: UUID, repository: String, root: String, path: String) =
+        RepositoryFileMetadata(
+            documentId = documentId,
+            repository = repository,
+            repositoryRoot = root,
+            filePath = path,
+            module = "root",
+            language = "kotlin",
+            lastModifiedAt = Instant.parse("2026-07-20T12:00:00Z"),
+            sizeBytes = 10,
+            contentHash = "hash",
+            indexedAt = Instant.parse("2026-07-20T12:00:00Z"),
+        )
+
     private fun contextFixture(): ContextFixture {
         val state = testStateStore()
         val metadataStore = RepositoryMetadataStore(state)

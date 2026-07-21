@@ -81,8 +81,11 @@ class RepositoryAgentService(
 
         val deleted = if (request.full && request.complete) {
             val activePaths = request.allPaths.map(::normalizeRelativePath).toSet()
-            metadataStore.activeForRepository(repositoryName, root)
-                .filter { it.filePath !in activePaths }
+            metadataStore.activeForRoot(root)
+                .filter {
+                    !it.repository.equals(repositoryName, ignoreCase = true) ||
+                        it.filePath !in activePaths
+                }
                 .map { deleteIndexedFile(it) }
         } else {
             emptyList()
@@ -188,6 +191,8 @@ class RepositoryAgentService(
 
     fun status(repository: String? = null): RepositoryAgentStatus {
         val requestedRepository = repository?.trim()?.takeIf { it.isNotBlank() }
+        val documentIds = documentRepository.ids()
+        metadataStore.deleteUnavailable(documentIds)
         val files = metadataStore.list()
             .filter {
                 requestedRepository == null ||
@@ -208,8 +213,8 @@ class RepositoryAgentService(
                     repositoryRoot = catalogRepository.path,
                     language = catalogRepository.language,
                     status = catalogRepository.status,
-                    trackedFiles = items.count { !it.deleted },
-                    deletedFiles = items.count { it.deleted },
+                    trackedFiles = items.size,
+                    deletedFiles = 0,
                     lastIndexedAt = catalogRepository.lastSyncedAt ?: items.maxOfOrNull { it.indexedAt },
                     projectIds = repositoryCatalog.linksForRepository(catalogRepository.id).map { it.projectId },
                 )
@@ -224,9 +229,9 @@ class RepositoryAgentService(
                         repository = key.first,
                         repositoryRoot = key.second,
                         language = primaryLanguage(items.map { it.language }),
-                        status = if (items.any { !it.deleted }) "synced" else "deleted",
-                        trackedFiles = items.count { !it.deleted },
-                        deletedFiles = items.count { it.deleted },
+                        status = "synced",
+                        trackedFiles = items.size,
+                        deletedFiles = 0,
                         lastIndexedAt = items.maxOfOrNull { it.indexedAt },
                         projectIds = emptyList(),
                     )
@@ -235,8 +240,8 @@ class RepositoryAgentService(
             .sortedWith(compareBy<RepositoryAgentRepositoryStatus> { it.repository.lowercase() }.thenBy { it.repositoryRoot })
         return RepositoryAgentStatus(
             configuredPath = settingsService.current().repositoryAgent.path.takeIf { it.isNotBlank() },
-            trackedFiles = files.count { !it.deleted },
-            deletedFiles = files.count { it.deleted },
+            trackedFiles = files.size,
+            deletedFiles = 0,
             lastIndexedAt = files.maxOfOrNull { it.indexedAt },
             repositories = repositories,
             files = files,
@@ -406,7 +411,8 @@ class RepositoryAgentService(
     private fun deleteIndexedFile(metadata: RepositoryFileMetadata): RepositoryFileMetadata {
         vectorIndex.deleteDocument(metadata.documentId)
         documentRepository.delete(metadata.documentId)
-        return metadataStore.save(metadata.copy(deleted = true, indexedAt = Instant.now()))
+        metadataStore.delete(metadata.documentId)
+        return metadata.copy(deleted = true, indexedAt = Instant.now())
     }
 
     private fun discoverFiles(root: Path): List<FileCandidate> =

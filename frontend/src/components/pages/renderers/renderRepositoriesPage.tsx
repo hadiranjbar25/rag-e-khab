@@ -1,5 +1,4 @@
 import {
-  Alert,
   ActionIcon,
   Badge,
   Box,
@@ -7,31 +6,32 @@ import {
   Checkbox,
   Collapse,
   Drawer,
-  FileInput,
   Group,
   Loader,
   Menu,
   NativeSelect,
-  NumberInput,
   Paper,
   Pagination,
   ScrollArea,
-  SegmentedControl,
-  Select,
   SimpleGrid,
   Stack,
   Table,
-  Tabs,
   Text,
-  Textarea,
   TextInput,
-  ThemeIcon,
   Title,
 } from '@mantine/core';
-import { AlertCircle, Archive, Brain, CheckCircle2, ChevronDown, ChevronRight, Clipboard, Copy, FilePlus2, FileText, FolderPlus, KeyRound, Layers, MoreHorizontal, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, Trash2, Upload } from 'lucide-react';
-import { SafeDebugArtifactsPanel } from '../../SafeDebugArtifactsPanel';
+import {
+  Archive,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FolderPlus,
+  MoreHorizontal,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import type { RageKhabAppModel } from '../../useRageKhabAppModel';
-import { contextBudgetProfileOptions, contextBudgetProfiles, CUSTOM_MODEL, DISABLED_MODEL, chatModelOptions, compressionModelOptions, embeddingModelOptions, formatBytes, memoryBadgeColor, memoryLabels, memoryTypes, selectValue, taskTemplates } from '../../../appSupport';
+import { formatBytes } from '../../../appSupport';
 
 export function renderRepositoriesPage(app: RageKhabAppModel) {
   const { view, setView, ingestMode, setIngestMode, uploadFile, setUploadFile, projects, setProjects, selectedProjectId, setSelectedProjectId, projectName, setProjectName, textTitle, setTextTitle, textBody, setTextBody, documents, setDocuments, memories, setMemories, allMemories, setAllMemories, repositoryStatus, setRepositoryStatus, repositories, setRepositories, projectRepositories, setProjectRepositories, workspaceHealth, setWorkspaceHealth, agentActivities, setAgentActivities, debugSessions, setDebugSessions, activeDebugSessionId, setActiveDebugSessionId, debugDetail, setDebugDetail, debugTitle, setDebugTitle, debugRawText, setDebugRawText, debugInputType, setDebugInputType, debugSanitizerMode, setDebugSanitizerMode, debugSourceName, setDebugSourceName, debugDataRequestId, setDebugDataRequestId, debugSanitizedText, setDebugSanitizedText, debugWarnings, setDebugWarnings, debugArtifactSliceStart, setDebugArtifactSliceStart, debugArtifactSliceEnd, setDebugArtifactSliceEnd, debugArtifactSlice, setDebugArtifactSlice, debugCompareLeftId, setDebugCompareLeftId, debugCompareRightId, setDebugCompareRightId, debugArtifactComparison, setDebugArtifactComparison, debugTokenQuery, setDebugTokenQuery, debugResolvedToken, setDebugResolvedToken, debugTokenSearch, setDebugTokenSearch, agentRequestDraft, setAgentRequestDraft, repositoryToLink, setRepositoryToLink, repositorySearch, setRepositorySearch, repositoryPage, setRepositoryPage, repositoryPageSize, setRepositoryPageSize, repositoryFilesExpanded, setRepositoryFilesExpanded, deleteRepositoryKnowledge, setDeleteRepositoryKnowledge, memoryFilter, setMemoryFilter, memorySearch, setMemorySearch, memoryPage, setMemoryPage, memoryPageSize, setMemoryPageSize, repositoryFilePage, setRepositoryFilePage, repositoryFilePageSize, setRepositoryFilePageSize, memoryTypeDraft, setMemoryTypeDraft, memoryContentDraft, setMemoryContentDraft, memoryRepositoryDraft, setMemoryRepositoryDraft, memoryToLink, setMemoryToLink, debugMemoryTypeDraft, setDebugMemoryTypeDraft, debugMemoryContentDraft, setDebugMemoryContentDraft, debugMemoryRepositoryDraft, setDebugMemoryRepositoryDraft, debugMemoryModuleDraft, setDebugMemoryModuleDraft, debugMemoryConfidenceDraft, setDebugMemoryConfidenceDraft, status, setStatus, settingsDraft, setSettingsDraft, question, setQuestion, task, setTask, selectedTaskTemplate, setSelectedTaskTemplate, optimizerTokenBudget, setOptimizerTokenBudget, optimizerBudgetProfile, setOptimizerBudgetProfile, optimizedContext, setOptimizedContext, history, setHistory, activeSource, setActiveSource, busy, setBusy, error, setError, colorScheme, setColorScheme, selectedProject, showToast, reportError, navigate, refresh, totalChunks, tokenSavings, lastSync, linkedRepositoryIds, repositoryCards, filteredRepositories, repositoryPageCount, normalizedRepositoryPage, repositoryPageStart, pagedRepositories, repositoryRangeStart, repositoryRangeEnd, discoveredFiles, repositoryFilePageCount, normalizedRepositoryFilePage, repositoryFilePageStart, pagedRepositoryFiles, repositoryFileRangeStart, repositoryFileRangeEnd, selectedRepositoryFile, repositoryFileDetail, repositoryFileLoading, openRepositoryFile, closeRepositoryFile, copyRepositoryFileContent, sortedDebugSessions, activeDebugSession, activeWorkspaceHealth, workspaceHealthColor, workspaceHealthTitle, currentBudgetProfile, stats, navItems, suggestedQuestions, memoryCounts, filteredMemories, memoryPageCount, normalizedMemoryPage, memoryPageStart, pagedMemories, memoryRangeStart, memoryRangeEnd, staleMemoryCount, recentActivity, upload, addText, ask, applyTaskTemplate, optimizeContext, deleteDocument, reindex, createProject, deleteProject, deleteMemory, rememberMemory, linkMemoryToProject, unlinkMemoryFromProject, saveSettings, linkRepositoryToProject, unlinkRepositoryFromProject, deleteRepository, createDebugSession, openDebugSession, archiveDebugSession, sanitizeDebugData, resolveDebugToken, recordAgentRequest, promoteDebugMemory, applyDebugMemorySuggestion, updateDebugDataRequest, copyDebugText, expandDebugArtifactSlice, compareDebugArtifacts, filteredDebugMappings, pendingDebugRequests, debugMemorySuggestions, latestDebugArtifact, latestDebugText, debugArtifactOptions, tokenMappingFor, artifactTextFor, suggestedSqlFor, activeSafeDebugInstruction, pageCopy, pageTitles, preWrapStyle, wideGridItemStyle } = app;
@@ -170,7 +170,6 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                 </Box>
                 <Group gap="xs">
                   <Badge color="teal" variant="light">{repositoryStatus?.trackedFiles ?? 0} tracked</Badge>
-                  <Badge color="gray" variant="outline">{repositoryStatus?.deletedFiles ?? 0} deleted</Badge>
                   <Button
                     size="xs"
                     variant="subtle"
@@ -187,7 +186,6 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                     <Table miw={960} verticalSpacing="xs">
                       <Table.Thead>
                         <Table.Tr>
-                          <Table.Th>Status</Table.Th>
                           <Table.Th>Repository</Table.Th>
                           <Table.Th>Path</Table.Th>
                           <Table.Th>Module</Table.Th>
@@ -202,12 +200,9 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                           <Table.Tr
                             key={file.documentId}
                             onClick={() => openRepositoryFile(file)}
-                            style={{ cursor: file.deleted ? 'default' : 'pointer' }}
-                            title={file.deleted ? 'Deleted indexed record' : 'View indexed content'}
+                            style={{ cursor: 'pointer' }}
+                            title="View indexed content"
                           >
-                            <Table.Td>
-                              <Badge color={file.deleted ? 'gray' : 'green'} variant="light">{file.deleted ? 'deleted' : 'tracked'}</Badge>
-                            </Table.Td>
                             <Table.Td>{file.repository || 'repository'}</Table.Td>
                             <Table.Td>
                               <Text size="sm" maw={360} truncate="end">{file.filePath}</Text>

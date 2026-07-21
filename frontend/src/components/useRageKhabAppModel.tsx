@@ -385,7 +385,6 @@ export function useRageKhabAppModel() {
   const repositoryRangeEnd = Math.min(repositoryPageStart + repositoryPageSize, filteredRepositories.length);
   const discoveredFiles = useMemo(() => [...(repositoryStatus?.files ?? [])]
     .sort((a, b) => {
-      if (a.deleted !== b.deleted) return a.deleted ? 1 : -1;
       return `${a.repository}/${a.filePath}`.localeCompare(`${b.repository}/${b.filePath}`);
     }), [repositoryStatus?.files]);
   const repositoryFilePageCount = Math.max(1, Math.ceil(discoveredFiles.length / repositoryFilePageSize));

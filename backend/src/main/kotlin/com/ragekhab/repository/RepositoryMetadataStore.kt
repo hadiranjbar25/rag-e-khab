@@ -12,6 +12,14 @@ class RepositoryMetadataStore(
 
     fun get(documentId: UUID): RepositoryFileMetadata? = state.get(STORE, documentId, RepositoryFileMetadata::class.java)
 
+    fun delete(documentId: UUID): Boolean = state.delete(STORE, documentId)
+
+    fun deleteUnavailable(documentIds: Set<UUID>): Int {
+        val unavailable = all().filter { it.deleted || it.documentId !in documentIds }
+        unavailable.forEach { state.delete(STORE, it.documentId) }
+        return unavailable.size
+    }
+
     fun activeForRoot(root: String): List<RepositoryFileMetadata> =
         all().filter { it.repositoryRoot == root && !it.deleted }
 
@@ -23,7 +31,7 @@ class RepositoryMetadataStore(
         }
 
     fun list(): List<RepositoryFileMetadata> =
-        all().sortedWith(compareBy<RepositoryFileMetadata> { it.repositoryRoot }.thenBy { it.filePath })
+        all().filterNot { it.deleted }.sortedWith(compareBy<RepositoryFileMetadata> { it.repositoryRoot }.thenBy { it.filePath })
 
     fun listRepository(repository: String): List<RepositoryFileMetadata> {
         val normalized = repository.trim()

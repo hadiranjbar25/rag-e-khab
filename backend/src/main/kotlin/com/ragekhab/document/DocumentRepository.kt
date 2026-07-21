@@ -24,6 +24,8 @@ class DocumentRepository(
     fun list(projectId: UUID): List<KnowledgeDocument> =
         documents().filter { it.projectId == projectId }.sortedByDescending { it.createdAt }
 
+    fun ids(): Set<UUID> = documents().mapTo(mutableSetOf()) { it.id }
+
     fun get(id: UUID): DocumentDetail? {
         val document = state.get(DOCUMENTS_STORE, id, KnowledgeDocument::class.java) ?: return null
         val chunks = state.get(CHUNKS_STORE, id, StoredDocumentChunks::class.java)?.chunks.orEmpty()
