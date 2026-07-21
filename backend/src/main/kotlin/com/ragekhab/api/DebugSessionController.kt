@@ -2,7 +2,6 @@ package com.ragekhab.api
 
 import com.ragekhab.debug.CreateDebugSessionRequest
 import com.ragekhab.debug.CreateDebugDataRequest
-import com.ragekhab.debug.DebugArtifact
 import com.ragekhab.debug.DebugArtifactComparison
 import com.ragekhab.debug.DebugArtifactSlice
 import com.ragekhab.debug.DebugDataRequest

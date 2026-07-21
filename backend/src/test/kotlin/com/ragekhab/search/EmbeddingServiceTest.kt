@@ -1,6 +1,5 @@
 package com.ragekhab.search
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.ragekhab.config.RagEKhabProperties
 import com.ragekhab.config.RuntimeSettingsService
 import com.ragekhab.testStateStore
