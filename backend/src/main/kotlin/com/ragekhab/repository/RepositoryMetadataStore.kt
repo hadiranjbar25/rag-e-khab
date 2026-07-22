@@ -47,8 +47,7 @@ class RepositoryMetadataStore(
         val ids = all()
             .filter { it.repository.equals(normalized, ignoreCase = true) }
             .map { it.documentId }
-        ids.forEach { state.delete(STORE, it) }
-        return ids.size
+        return state.deleteAll(STORE, ids)
     }
 
     private fun all(): List<RepositoryFileMetadata> = state.list(STORE, RepositoryFileMetadata::class.java)

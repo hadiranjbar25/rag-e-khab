@@ -41,6 +41,13 @@ class DocumentRepository(
         return deletedDocument
     }
 
+    fun deleteAll(ids: Collection<UUID>): Int {
+        if (ids.isEmpty()) return 0
+        val deletedDocuments = state.deleteAll(DOCUMENTS_STORE, ids)
+        state.deleteAll(CHUNKS_STORE, ids)
+        return deletedDocuments
+    }
+
     fun clear() {
         state.deleteStore(DOCUMENTS_STORE)
         state.deleteStore(CHUNKS_STORE)

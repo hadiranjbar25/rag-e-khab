@@ -3,7 +3,6 @@ import {
   Badge,
   Box,
   Button,
-  Checkbox,
   Collapse,
   Drawer,
   Group,
@@ -247,15 +246,6 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                   {discoveredFiles.length === 0 && <Text c="dimmed">No discovered file metadata yet.</Text>}
                 </Stack>
               </Collapse>
-            </Paper>
-
-            <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
-              <Title order={2} size="h4">Repository deletion options</Title>
-              <Checkbox
-                checked={deleteRepositoryKnowledge}
-                onChange={(event) => setDeleteRepositoryKnowledge(event.currentTarget.checked)}
-                label="Delete indexed knowledge when deleting a repository"
-              />
             </Paper>
 
             <Drawer

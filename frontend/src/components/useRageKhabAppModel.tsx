@@ -853,19 +853,17 @@ export function useRageKhabAppModel() {
   };
 
   const deleteRepository = async (repository: RepositoryItem) => {
-    const message = deleteRepositoryKnowledge
-      ? `Delete repository "${repository.name}" and its indexed knowledge?`
-      : `Remove repository "${repository.name}" from the repository catalog? Indexed knowledge will remain.`;
+    const message = `Delete repository "${repository.name}" and all of its indexed files?`;
     if (!window.confirm(message)) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await request<RepositoryDeleteResult>(`/api/repositories/${repository.id}?deleteKnowledge=${deleteRepositoryKnowledge}`, { method: 'DELETE' });
+      const result = await request<RepositoryDeleteResult>(`/api/repositories/${repository.id}`, { method: 'DELETE' });
       await refresh();
       showToast({
         type: 'success',
         title: 'Repository deleted',
-        message: result.deletedIndexedKnowledge > 0 ? `${result.deletedIndexedKnowledge} indexed item(s) removed` : 'Repository hidden; indexed knowledge kept'
+        message: `${result.deletedIndexedKnowledge} indexed item(s) removed`
       });
     } catch (err) {
       reportError(err, 'Repository deletion failed');

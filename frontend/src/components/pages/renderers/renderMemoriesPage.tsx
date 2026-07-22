@@ -101,7 +101,16 @@ export function renderMemoriesPage(app: RageKhabAppModel) {
                     data={memoryTypes.map((type) => ({ value: type, label: memoryLabels[type] ?? type }))}
                   />
                   <TextInput value={memoryRepositoryDraft} onChange={(event) => setMemoryRepositoryDraft(event.currentTarget.value)} placeholder="repository optional" />
-                  <Textarea style={{ gridColumn: '1 / -1' }} value={memoryContentDraft} onChange={(event) => setMemoryContentDraft(event.currentTarget.value)} placeholder="Do not use uppercase UI labels in this workspace. Prefer sentence case." autosize minRows={3} />
+                  <Textarea
+                    style={{ gridColumn: '1 / -1' }}
+                    value={memoryContentDraft}
+                    onChange={(event) => setMemoryContentDraft(event.currentTarget.value)}
+                    placeholder="Store one concise, reusable lesson. Do not paste files or implementation details."
+                    description={`${memoryContentDraft.length}/600 characters`}
+                    maxLength={600}
+                    autosize
+                    minRows={3}
+                  />
                   <Button onClick={rememberMemory} disabled={busy || !memoryContentDraft.trim() || !selectedProjectId}>Remember</Button>
                 </SimpleGrid>
             </Paper>
@@ -129,7 +138,7 @@ export function renderMemoriesPage(app: RageKhabAppModel) {
                 const expanded = Boolean(expandedMemoryIds[memory.id]);
                 const canExpand = memory.content.length > 220 || memory.content.split('\n').length > 4;
                 return (
-                <Paper component={Stack} gap="sm" key={memory.id} p="md" radius="sm" withBorder>
+                <Paper component={Stack} gap="sm" key={memory.id} p="md" radius="sm" miw={0} withBorder>
                   <Group justify="space-between" align="flex-start">
                     <Group gap="xs">
                       <Badge color={memoryBadgeColor(memory.type)} variant="light">{memoryLabels[memory.type] ?? memory.type}</Badge>
@@ -145,8 +154,13 @@ export function renderMemoriesPage(app: RageKhabAppModel) {
                       </Menu.Dropdown>
                     </Menu>
                   </Group>
-                  <Stack gap={4}>
-                    <Text lineClamp={expanded ? undefined : 4}>{memory.content}</Text>
+                  <Stack gap={4} miw={0}>
+                    <Text
+                      lineClamp={expanded ? undefined : 4}
+                      style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                    >
+                      {memory.content}
+                    </Text>
                     {canExpand && (
                       <Button
                         variant="subtle"
@@ -161,14 +175,28 @@ export function renderMemoriesPage(app: RageKhabAppModel) {
                   </Stack>
                   <Group gap="xs">
                     <Badge color="gray" variant="light">{Math.round(memory.confidence * 100)}% confidence</Badge>
-                    <Badge color="gray" variant="outline">{memory.repository ?? 'global'}</Badge>
+                    <Badge
+                      color="gray"
+                      variant="outline"
+                      maw="100%"
+                      h="auto"
+                      style={{ whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                    >
+                      {memory.repository ?? 'global'}
+                    </Badge>
                   </Group>
                   {memory.freshness?.status === 'stale' && (
                     <Alert color="yellow" variant="light" icon={<Clock3 size={16} />}>
                       <Stack gap={4}>
                         <Text size="sm">{memory.freshness.reason ?? 'Related repository files changed after this memory was saved.'}</Text>
                         {memory.freshness.changedFiles.length > 0 && (
-                          <Text size="xs" ff="monospace">{memory.freshness.changedFiles.slice(0, 3).join(', ')}</Text>
+                          <Text
+                            size="xs"
+                            ff="monospace"
+                            style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                          >
+                            {memory.freshness.changedFiles.slice(0, 3).join(', ')}
+                          </Text>
                         )}
                       </Stack>
                     </Alert>

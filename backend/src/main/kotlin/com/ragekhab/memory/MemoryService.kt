@@ -29,6 +29,9 @@ class MemoryService(
     fun remember(request: RememberRequest): AgentMemory {
         val content = request.content.trim()
         require(content.isNotBlank()) { "Memory content must not be blank." }
+        require(content.length <= MAX_STORED_MEMORY_CHARACTERS) {
+            "Memory content must be $MAX_STORED_MEMORY_CHARACTERS characters or fewer. Store one concise, reusable lesson instead of file content or implementation detail."
+        }
         require(request.projectId != null || request.global) {
             "Memory scope must be explicit. Pass projectId for a workspace memory, or global=true for General memory."
         }
@@ -196,7 +199,7 @@ class MemoryService(
         RelevantMemory(
             id = memory.id.toString(),
             type = memory.type,
-            content = memory.content,
+            content = memory.content.compactForRecall(),
             relevanceScore = finalScore.roundScore(),
             confidenceScore = memory.confidence.roundScore(),
             createdAt = memory.createdAt,
@@ -217,6 +220,20 @@ class MemoryService(
 
     private fun Double.roundScore(): Double =
         (this * 10_000.0).roundToInt() / 10_000.0
+
+    private fun String.compactForRecall(): String {
+        val normalized = lineSequence()
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+        if (normalized.length <= MAX_RECALLED_MEMORY_CHARACTERS) return normalized
+        val available = MAX_RECALLED_MEMORY_CHARACTERS - RECALL_TRUNCATION_NOTE.length - 1
+        val prefix = normalized.take(available)
+            .substringBeforeLast(' ', normalized.take(available))
+            .trimEnd(',', ';', ':', '-', ' ')
+        return "$prefix $RECALL_TRUNCATION_NOTE"
+    }
 
     private data class RankedMemory(
         val memory: AgentMemory,
@@ -239,6 +256,9 @@ class MemoryService(
 
     private companion object {
         const val MEMORY_CHUNK_PREFIX = "memory:"
+        const val MAX_STORED_MEMORY_CHARACTERS = 600
+        const val MAX_RECALLED_MEMORY_CHARACTERS = 480
+        const val RECALL_TRUNCATION_NOTE = "[Shortened for recall; full memory remains in the UI.]"
 
         fun memoryChunkId(id: UUID): String = "$MEMORY_CHUNK_PREFIX$id"
 

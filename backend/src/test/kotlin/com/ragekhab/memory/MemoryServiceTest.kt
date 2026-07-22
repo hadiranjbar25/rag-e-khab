@@ -82,6 +82,47 @@ class MemoryServiceTest {
         assertTrue(error.message.orEmpty().contains("Memory scope must be explicit"))
     }
 
+    @Test
+    fun `new memories must contain one concise lesson`() {
+        val state = testStateStore()
+        val service = MemoryService(MemoryRepository(state), FakeVectorIndex(), RepositoryMetadataStore(state))
+
+        val error = assertFailsWith<IllegalArgumentException> {
+            service.remember(
+                RememberRequest(
+                    type = MemoryType.ProjectKnowledge,
+                    content = "x".repeat(601),
+                    global = true,
+                ),
+            )
+        }
+
+        assertTrue(error.message.orEmpty().contains("600 characters or fewer"))
+    }
+
+    @Test
+    fun `recall compacts legacy oversized memories without changing stored content`() {
+        val state = testStateStore()
+        val repository = MemoryRepository(state)
+        val service = MemoryService(repository, FakeVectorIndex(), RepositoryMetadataStore(state))
+        val content = "Reusable architecture lesson " + "implementation detail ".repeat(100)
+        repository.save(
+            AgentMemory(
+                id = UUID.randomUUID(),
+                type = MemoryType.ArchitectureDecision,
+                content = content,
+                confidence = 0.9,
+                createdAt = Instant.now(),
+            ),
+        )
+
+        val recalled = service.recall(RecallMemoryRequest(task = "architecture lesson")).relevantMemories.single()
+
+        assertTrue(recalled.content.length <= 480)
+        assertTrue(recalled.content.contains("Shortened for recall"))
+        assertEquals(content, service.list().single().content)
+    }
+
     private class FakeVectorIndex : VectorIndex {
         override fun upsert(chunks: List<DocumentChunk>) = Unit
         override fun search(query: String, limit: Int, projectId: UUID?): List<SearchResult> = emptyList()

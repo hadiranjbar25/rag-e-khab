@@ -52,7 +52,7 @@ data class RememberRequest(
 
 data class RecallMemoryRequest(
     val task: String,
-    val limit: Int = 8,
+    val limit: Int = 5,
     val repository: String? = null,
     val module: String? = null,
     val type: MemoryType? = null,

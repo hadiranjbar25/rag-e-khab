@@ -35,12 +35,17 @@ class ResilientVectorIndex(
         }
 
     override fun deleteDocument(documentId: UUID) {
+        deleteDocuments(listOf(documentId))
+    }
+
+    override fun deleteDocuments(documentIds: Collection<UUID>) {
+        if (documentIds.isEmpty()) return
         runCatching {
-            qdrant.deleteDocument(documentId)
+            qdrant.deleteDocuments(documentIds)
             qdrantHealthy = true
         }.onFailure {
             markFallback("delete", it)
-            memory.deleteDocument(documentId)
+            memory.deleteDocuments(documentIds)
         }
     }
 

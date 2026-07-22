@@ -80,6 +80,14 @@ class AppStateStore(
     fun delete(store: String, id: String): Boolean =
         jdbc.update("delete from app_state where store = ? and id = ?", store, id) > 0
 
+    fun deleteAll(store: String, ids: Collection<UUID>): Int {
+        if (ids.isEmpty()) return 0
+        return jdbc.batchUpdate(
+            "delete from app_state where store = ? and id = ?",
+            ids.map { arrayOf(store, it.toString()) },
+        ).sum()
+    }
+
     fun deleteStore(store: String) {
         jdbc.update("delete from app_state where store = ?", store)
     }

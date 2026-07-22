@@ -63,10 +63,23 @@ class QdrantVectorIndex(
     }
 
     fun deleteDocument(documentId: UUID) {
+        deleteDocuments(listOf(documentId))
+    }
+
+    fun deleteDocuments(documentIds: Collection<UUID>) {
+        if (documentIds.isEmpty()) return
         ensureCollection()
         client.post()
             .uri("/collections/{collection}/points/delete?wait=true", properties.qdrant.collection)
-            .body(mapOf("filter" to mapOf("must" to listOf(mapOf("key" to "documentId", "match" to mapOf("value" to documentId.toString()))))))
+            .body(
+                mapOf(
+                    "filter" to mapOf(
+                        "must" to listOf(
+                            mapOf("key" to "documentId", "match" to mapOf("any" to documentIds.map(UUID::toString))),
+                        ),
+                    ),
+                ),
+            )
             .retrieve()
             .toBodilessEntity()
     }

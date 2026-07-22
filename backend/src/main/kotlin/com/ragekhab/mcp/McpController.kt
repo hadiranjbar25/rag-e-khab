@@ -120,7 +120,7 @@ class McpController(
             "recall_memory" -> memoryService.recall(
                 RecallMemoryRequest(
                     task = arguments["task"]?.toString() ?: error("Missing task"),
-                    limit = arguments["limit"]?.toString()?.toIntOrNull() ?: 8,
+                    limit = arguments["limit"]?.toString()?.toIntOrNull() ?: 5,
                     repository = arguments["repository"]?.toString()?.takeIf { it.isNotBlank() },
                     module = arguments["module"]?.toString()?.takeIf { it.isNotBlank() },
                     type = arguments["type"]?.toString()?.takeIf { it.isNotBlank() }?.let(::parseMemoryType),

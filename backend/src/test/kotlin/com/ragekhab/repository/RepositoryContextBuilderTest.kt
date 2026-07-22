@@ -251,6 +251,44 @@ class RepositoryContextBuilderTest {
         assertEquals(null, metadataStore.get(staleId))
     }
 
+    @Test
+    fun `repository deletion removes indexed knowledge in one bulk vector operation`() {
+        val state = testStateStore()
+        val documentRepository = DocumentRepository(state)
+        val metadataStore = RepositoryMetadataStore(state)
+        val vectorIndex = FakeVectorIndex()
+        val service = RepositoryAgentService(
+            settingsService = RuntimeSettingsService(RagEKhabProperties(), state),
+            metadataStore = metadataStore,
+            repositoryCatalog = RepositoryCatalogStore(state),
+            chunker = Chunker(),
+            documentRepository = documentRepository,
+            vectorIndex = vectorIndex,
+            projectService = ProjectService(ProjectRepository(state), documentRepository),
+        )
+        val files = (1..3).map { index ->
+            RepositorySyncFile(
+                path = ".ragekhab/source/File$index.kt.md",
+                module = "backend",
+                language = "markdown",
+                lastModifiedAt = Instant.parse("2026-07-20T12:00:00Z"),
+                sizeBytes = 20,
+                contentHash = "hash-$index",
+                content = "# File $index\nfun operation$index()",
+            )
+        }
+        val synced = service.sync(RepositorySyncRequest(repository = "bulk-delete", repositoryRoot = "/bulk-delete", files = files))
+        vectorIndex.deletedDocuments.clear()
+
+        val deleted = service.deleteRepository(synced.repositoryId)
+
+        assertEquals(3, deleted.deletedIndexedKnowledge)
+        assertEquals(1, vectorIndex.bulkDeleteCalls)
+        assertEquals(3, vectorIndex.deletedDocuments.size)
+        assertTrue(documentRepository.list().isEmpty())
+        assertTrue(metadataStore.listRepository("bulk-delete").isEmpty())
+    }
+
     private fun repositoryAgentService(
         state: com.ragekhab.storage.AppStateStore,
         metadataStore: RepositoryMetadataStore,
@@ -465,10 +503,15 @@ class RepositoryContextBuilderTest {
 
     private class FakeVectorIndex : VectorIndex {
         val deletedDocuments = mutableListOf<UUID>()
+        var bulkDeleteCalls = 0
         override fun upsert(chunks: List<DocumentChunk>) = Unit
         override fun search(query: String, limit: Int, projectId: UUID?): List<SearchResult> = emptyList()
         override fun deleteDocument(documentId: UUID) {
             deletedDocuments += documentId
+        }
+        override fun deleteDocuments(documentIds: Collection<UUID>) {
+            bulkDeleteCalls += 1
+            deletedDocuments += documentIds
         }
         override fun reindex(chunks: List<DocumentChunk>) = Unit
         override fun status(): String = "fake"

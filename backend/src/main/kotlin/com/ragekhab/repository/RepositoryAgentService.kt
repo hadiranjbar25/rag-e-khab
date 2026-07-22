@@ -248,25 +248,16 @@ class RepositoryAgentService(
         )
     }
 
-    fun deleteRepository(repositoryId: UUID, deleteKnowledge: Boolean): RepositoryDeleteResult {
+    fun deleteRepository(repositoryId: UUID): RepositoryDeleteResult {
         backfillRepositoryCatalog(metadataStore.list())
         val repository = repositoryCatalog.get(repositoryId) ?: legacyRepository(repositoryId)
             ?: error("Repository not found.")
-        val deletedIndexedKnowledge = if (deleteKnowledge) {
-            val metadata = metadataStore.listRepository(repository.name)
-            metadata.forEach {
-                vectorIndex.deleteDocument(it.documentId)
-                documentRepository.delete(it.documentId)
-            }
-            metadataStore.deleteRepository(repository.name)
-        } else {
-            0
-        }
-        if (deleteKnowledge) {
-            repositoryCatalog.deleteRepository(repositoryId)
-        } else {
-            repositoryCatalog.markDeleted(repositoryId)
-        }
+        val metadata = metadataStore.listRepository(repository.name)
+        val documentIds = metadata.map { it.documentId }
+        vectorIndex.deleteDocuments(documentIds)
+        documentRepository.deleteAll(documentIds)
+        val deletedIndexedKnowledge = metadataStore.deleteRepository(repository.name)
+        repositoryCatalog.deleteRepository(repositoryId)
         return RepositoryDeleteResult(
             deleted = true,
             repositoryId = repositoryId,

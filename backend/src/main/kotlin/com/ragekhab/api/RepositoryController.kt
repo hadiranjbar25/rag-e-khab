@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
@@ -34,11 +33,8 @@ class RepositoryController(
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.OK)
-    fun delete(
-        @PathVariable id: UUID,
-        @RequestParam(defaultValue = "false") deleteKnowledge: Boolean,
-    ): RepositoryDeleteResult =
-        runCatching { repositoryAgent.deleteRepository(id, deleteKnowledge) }
+    fun delete(@PathVariable id: UUID): RepositoryDeleteResult =
+        runCatching { repositoryAgent.deleteRepository(id) }
             .getOrElse {
                 if (it.message == "Repository not found.") {
                     throw ResponseStatusException(HttpStatus.NOT_FOUND, it.message)

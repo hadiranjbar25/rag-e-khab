@@ -1,0 +1,10 @@
+.mantine-Paper-root,
+.mantine-Card-root {
+  min-width: 0;
+}
+
+.mantine-Text-root {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

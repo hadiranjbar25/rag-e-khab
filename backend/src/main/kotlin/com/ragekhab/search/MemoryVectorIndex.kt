@@ -29,7 +29,12 @@ class MemoryVectorIndex(private val embedder: EmbeddingService) : VectorIndex {
     }
 
     override fun deleteDocument(documentId: UUID) {
-        indexed.entries.removeIf { it.value.chunk.documentId == documentId }
+        deleteDocuments(listOf(documentId))
+    }
+
+    override fun deleteDocuments(documentIds: Collection<UUID>) {
+        val ids = documentIds.toSet()
+        indexed.entries.removeIf { it.value.chunk.documentId in ids }
     }
 
     override fun reindex(chunks: List<DocumentChunk>) {
