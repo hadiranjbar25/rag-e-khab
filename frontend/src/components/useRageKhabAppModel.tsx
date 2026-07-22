@@ -173,6 +173,7 @@ export function useRageKhabAppModel() {
   const [repositoryPage, setRepositoryPage] = useState(1);
   const [repositoryPageSize, setRepositoryPageSize] = useState(9);
   const [repositoryFilesExpanded, setRepositoryFilesExpanded] = useState(false);
+  const [repositoryFileRepository, setRepositoryFileRepository] = useState('all');
   const [selectedRepositoryFile, setSelectedRepositoryFile] = useState<RepositoryFileMetadata | null>(null);
   const [repositoryFileDetail, setRepositoryFileDetail] = useState<DocumentDetail | null>(null);
   const [repositoryFileLoading, setRepositoryFileLoading] = useState(false);
@@ -383,10 +384,14 @@ export function useRageKhabAppModel() {
   const pagedRepositories = filteredRepositories.slice(repositoryPageStart, repositoryPageStart + repositoryPageSize);
   const repositoryRangeStart = filteredRepositories.length === 0 ? 0 : repositoryPageStart + 1;
   const repositoryRangeEnd = Math.min(repositoryPageStart + repositoryPageSize, filteredRepositories.length);
-  const discoveredFiles = useMemo(() => [...(repositoryStatus?.files ?? [])]
+  const repositoryFileRepositories = useMemo(() => [...new Set(
+    (repositoryStatus?.files ?? []).map((file) => file.repository || 'repository'),
+  )].sort((a, b) => a.localeCompare(b)), [repositoryStatus?.files]);
+  const discoveredFiles = useMemo(() => (repositoryStatus?.files ?? [])
+    .filter((file) => repositoryFileRepository === 'all' || (file.repository || 'repository') === repositoryFileRepository)
     .sort((a, b) => {
       return `${a.repository}/${a.filePath}`.localeCompare(`${b.repository}/${b.filePath}`);
-    }), [repositoryStatus?.files]);
+    }), [repositoryFileRepository, repositoryStatus?.files]);
   const repositoryFilePageCount = Math.max(1, Math.ceil(discoveredFiles.length / repositoryFilePageSize));
   const normalizedRepositoryFilePage = Math.min(repositoryFilePage, repositoryFilePageCount);
   const repositoryFilePageStart = (normalizedRepositoryFilePage - 1) * repositoryFilePageSize;
@@ -1222,6 +1227,8 @@ export function useRageKhabAppModel() {
     setRepositoryPageSize,
     repositoryFilesExpanded,
     setRepositoryFilesExpanded,
+    repositoryFileRepository,
+    setRepositoryFileRepository,
     selectedRepositoryFile,
     repositoryFileDetail,
     repositoryFileLoading,
@@ -1306,6 +1313,7 @@ export function useRageKhabAppModel() {
     repositoryRangeStart,
     repositoryRangeEnd,
     discoveredFiles,
+    repositoryFileRepositories,
     repositoryFilePageCount,
     normalizedRepositoryFilePage,
     repositoryFilePageStart,

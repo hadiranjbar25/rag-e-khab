@@ -33,7 +33,7 @@ import type { RageKhabAppModel } from '../../useRageKhabAppModel';
 import { formatBytes } from '../../../appSupport';
 
 export function renderRepositoriesPage(app: RageKhabAppModel) {
-  const { view, setView, ingestMode, setIngestMode, uploadFile, setUploadFile, projects, setProjects, selectedProjectId, setSelectedProjectId, projectName, setProjectName, textTitle, setTextTitle, textBody, setTextBody, documents, setDocuments, memories, setMemories, allMemories, setAllMemories, repositoryStatus, setRepositoryStatus, repositories, setRepositories, projectRepositories, setProjectRepositories, workspaceHealth, setWorkspaceHealth, agentActivities, setAgentActivities, debugSessions, setDebugSessions, activeDebugSessionId, setActiveDebugSessionId, debugDetail, setDebugDetail, debugTitle, setDebugTitle, debugRawText, setDebugRawText, debugInputType, setDebugInputType, debugSanitizerMode, setDebugSanitizerMode, debugSourceName, setDebugSourceName, debugDataRequestId, setDebugDataRequestId, debugSanitizedText, setDebugSanitizedText, debugWarnings, setDebugWarnings, debugArtifactSliceStart, setDebugArtifactSliceStart, debugArtifactSliceEnd, setDebugArtifactSliceEnd, debugArtifactSlice, setDebugArtifactSlice, debugCompareLeftId, setDebugCompareLeftId, debugCompareRightId, setDebugCompareRightId, debugArtifactComparison, setDebugArtifactComparison, debugTokenQuery, setDebugTokenQuery, debugResolvedToken, setDebugResolvedToken, debugTokenSearch, setDebugTokenSearch, agentRequestDraft, setAgentRequestDraft, repositoryToLink, setRepositoryToLink, repositorySearch, setRepositorySearch, repositoryPage, setRepositoryPage, repositoryPageSize, setRepositoryPageSize, repositoryFilesExpanded, setRepositoryFilesExpanded, deleteRepositoryKnowledge, setDeleteRepositoryKnowledge, memoryFilter, setMemoryFilter, memorySearch, setMemorySearch, memoryPage, setMemoryPage, memoryPageSize, setMemoryPageSize, repositoryFilePage, setRepositoryFilePage, repositoryFilePageSize, setRepositoryFilePageSize, memoryTypeDraft, setMemoryTypeDraft, memoryContentDraft, setMemoryContentDraft, memoryRepositoryDraft, setMemoryRepositoryDraft, memoryToLink, setMemoryToLink, debugMemoryTypeDraft, setDebugMemoryTypeDraft, debugMemoryContentDraft, setDebugMemoryContentDraft, debugMemoryRepositoryDraft, setDebugMemoryRepositoryDraft, debugMemoryModuleDraft, setDebugMemoryModuleDraft, debugMemoryConfidenceDraft, setDebugMemoryConfidenceDraft, status, setStatus, settingsDraft, setSettingsDraft, question, setQuestion, task, setTask, selectedTaskTemplate, setSelectedTaskTemplate, optimizerTokenBudget, setOptimizerTokenBudget, optimizerBudgetProfile, setOptimizerBudgetProfile, optimizedContext, setOptimizedContext, history, setHistory, activeSource, setActiveSource, busy, setBusy, error, setError, colorScheme, setColorScheme, selectedProject, showToast, reportError, navigate, refresh, totalChunks, tokenSavings, lastSync, linkedRepositoryIds, repositoryCards, filteredRepositories, repositoryPageCount, normalizedRepositoryPage, repositoryPageStart, pagedRepositories, repositoryRangeStart, repositoryRangeEnd, discoveredFiles, repositoryFilePageCount, normalizedRepositoryFilePage, repositoryFilePageStart, pagedRepositoryFiles, repositoryFileRangeStart, repositoryFileRangeEnd, selectedRepositoryFile, repositoryFileDetail, repositoryFileLoading, openRepositoryFile, closeRepositoryFile, copyRepositoryFileContent, sortedDebugSessions, activeDebugSession, activeWorkspaceHealth, workspaceHealthColor, workspaceHealthTitle, currentBudgetProfile, stats, navItems, suggestedQuestions, memoryCounts, filteredMemories, memoryPageCount, normalizedMemoryPage, memoryPageStart, pagedMemories, memoryRangeStart, memoryRangeEnd, staleMemoryCount, recentActivity, upload, addText, ask, applyTaskTemplate, optimizeContext, deleteDocument, reindex, createProject, deleteProject, deleteMemory, rememberMemory, linkMemoryToProject, unlinkMemoryFromProject, saveSettings, linkRepositoryToProject, unlinkRepositoryFromProject, deleteRepository, createDebugSession, openDebugSession, archiveDebugSession, sanitizeDebugData, resolveDebugToken, recordAgentRequest, promoteDebugMemory, applyDebugMemorySuggestion, updateDebugDataRequest, copyDebugText, expandDebugArtifactSlice, compareDebugArtifacts, filteredDebugMappings, pendingDebugRequests, debugMemorySuggestions, latestDebugArtifact, latestDebugText, debugArtifactOptions, tokenMappingFor, artifactTextFor, suggestedSqlFor, activeSafeDebugInstruction, pageCopy, pageTitles, preWrapStyle, wideGridItemStyle } = app;
+  const { repositoryStatus, projectRepositories, repositoryCards, repositorySearch, setRepositorySearch, repositoryPageSize, setRepositoryPageSize, filteredRepositories, repositoryRangeStart, repositoryRangeEnd, pagedRepositories, linkedRepositoryIds, selectedProjectId, linkRepositoryToProject, unlinkRepositoryFromProject, deleteRepository, repositoryPageCount, normalizedRepositoryPage, setRepositoryPage, repositoryFilesExpanded, setRepositoryFilesExpanded, repositoryFileRepository, setRepositoryFileRepository, repositoryFileRepositories, discoveredFiles, pagedRepositoryFiles, openRepositoryFile, repositoryFileRangeStart, repositoryFileRangeEnd, repositoryFilePageSize, setRepositoryFilePageSize, repositoryFilePageCount, normalizedRepositoryFilePage, setRepositoryFilePage, selectedRepositoryFile, closeRepositoryFile, repositoryFileLoading, repositoryFileDetail, copyRepositoryFileContent, lastSync, memories, busy } = app;
   return (
           <Stack component="section" gap="md">
             <Paper p="md" radius="sm" withBorder>
@@ -181,6 +181,22 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
               </Group>
               <Collapse expanded={repositoryFilesExpanded}>
                 <Stack gap="md" mt="md">
+                  <NativeSelect
+                    label="Repository"
+                    value={repositoryFileRepository}
+                    onChange={(event) => {
+                      setRepositoryFileRepository(event.currentTarget.value);
+                      setRepositoryFilePage(1);
+                    }}
+                    data={[
+                      { value: 'all', label: `All repositories (${repositoryStatus?.trackedFiles ?? 0})` },
+                      ...repositoryFileRepositories.map((repository) => ({
+                        value: repository,
+                        label: repository,
+                      })),
+                    ]}
+                    maw={360}
+                  />
                   <ScrollArea>
                     <Table miw={960} verticalSpacing="xs">
                       <Table.Thead>
@@ -243,7 +259,9 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                       </Group>
                     </Group>
                   )}
-                  {discoveredFiles.length === 0 && <Text c="dimmed">No discovered file metadata yet.</Text>}
+                  {discoveredFiles.length === 0 && (
+                    <Text c="dimmed">No discovered files for this repository.</Text>
+                  )}
                 </Stack>
               </Collapse>
             </Paper>
