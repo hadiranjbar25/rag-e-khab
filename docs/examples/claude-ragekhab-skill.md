@@ -2,6 +2,39 @@
 
 This example shows a minimal Claude Skill that teaches Claude Code to use the RAG-e Khab MCP server with low token usage.
 
+## Repository `CLAUDE.md` Template
+
+Copy the following into `CLAUDE.md` at the root of any repository where Claude should use RAG-e Khab automatically:
+
+````md
+# RAG-e Khab Instructions
+
+You have access to RAG-e Khab through the configured MCP server.
+
+Before starting any non-trivial coding or debugging task:
+
+1. Call `recall_memory` for relevant conventions, previous fixes, and architecture decisions.
+2. Call `optimize_context` to get focused repository context.
+3. Call `search_documents` only when more indexed knowledge is required.
+4. Open source files directly only when the compact MCP context is insufficient.
+
+After completing work, call `remember` only when there is one concise, reusable lesson worth preserving. Pass the current workspace `projectId` for project-scoped memories. Never use global memory unless the developer explicitly requests it.
+
+Do not skip this workflow merely because the repository is locally accessible. MCP is not required for trivial follow-up questions that need no repository context.
+
+For repository synchronization, prefer the local repository agent because it can read host workspace paths:
+
+```bash
+java -jar /path/to/ragekhab-agent.jar \
+  --server YOUR_RAGEKHAB_URL \
+  --path .
+```
+
+Use MCP `scan_repository` only when the repository path is visible to the backend process or container.
+````
+
+The MCP server must also be configured in Claude and RAG-e Khab must be running. See the main README for the server configuration.
+
 Suggested skill folder:
 
 ```text
@@ -91,7 +124,7 @@ Coding task:
 Repository sync command:
 
 ```bash
-java -jar /path/to/ragekhab-agent.jar --server http://localhost:8060 --path .
+java -jar /path/to/ragekhab-agent.jar --server YOUR_RAGEKHAB_URL --path .
 ```
 
 Backend-visible repository scan:

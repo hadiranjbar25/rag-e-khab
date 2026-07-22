@@ -165,6 +165,8 @@ Language support:
 
 ## MCP Setup
 
+Claude Code users can copy the ready-made [`CLAUDE.md` project prompt](docs/examples/claude-ragekhab-skill.md#repository-claudemd-template) into their repositories to make the MCP-first workflow automatic.
+
 RAG-e Khab exposes HTTP MCP at:
 
 ```text
