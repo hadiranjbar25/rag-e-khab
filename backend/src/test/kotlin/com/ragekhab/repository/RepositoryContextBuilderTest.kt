@@ -289,6 +289,94 @@ class RepositoryContextBuilderTest {
         assertTrue(metadataStore.listRepository("bulk-delete").isEmpty())
     }
 
+    @Test
+    fun `status hard purges discovered files for legacy deleted repositories`() {
+        val state = testStateStore()
+        val metadataStore = RepositoryMetadataStore(state)
+        val documentRepository = DocumentRepository(state)
+        val catalog = RepositoryCatalogStore(state)
+        val vectorIndex = FakeVectorIndex()
+        val service = RepositoryAgentService(
+            settingsService = RuntimeSettingsService(RagEKhabProperties(), state),
+            metadataStore = metadataStore,
+            repositoryCatalog = catalog,
+            chunker = Chunker(),
+            documentRepository = documentRepository,
+            vectorIndex = vectorIndex,
+            projectService = ProjectService(ProjectRepository(state), documentRepository),
+        )
+        val synced = service.sync(
+            RepositorySyncRequest(
+                repository = "legacy-deleted",
+                repositoryRoot = "/legacy-deleted",
+                files = listOf(
+                    RepositorySyncFile(
+                        path = ".ragekhab/repository-map.md",
+                        module = "root",
+                        language = "markdown",
+                        lastModifiedAt = Instant.parse("2026-07-20T12:00:00Z"),
+                        sizeBytes = 10,
+                        contentHash = "legacy-hash",
+                        content = "# Legacy",
+                    ),
+                ),
+            ),
+        )
+        catalog.markDeleted(synced.repositoryId)
+        vectorIndex.deletedDocuments.clear()
+
+        val status = service.status()
+
+        assertTrue(status.files.isEmpty())
+        assertTrue(metadataStore.listRepository("legacy-deleted").isEmpty())
+        assertTrue(documentRepository.list().isEmpty())
+        assertEquals(1, vectorIndex.deletedDocuments.size)
+        assertEquals(null, catalog.get(synced.repositoryId))
+    }
+
+    @Test
+    fun `deleted alias cannot purge active repository at same root`() {
+        val state = testStateStore()
+        val metadataStore = RepositoryMetadataStore(state)
+        val documentRepository = DocumentRepository(state)
+        val catalog = RepositoryCatalogStore(state)
+        val service = RepositoryAgentService(
+            settingsService = RuntimeSettingsService(RagEKhabProperties(), state),
+            metadataStore = metadataStore,
+            repositoryCatalog = catalog,
+            chunker = Chunker(),
+            documentRepository = documentRepository,
+            vectorIndex = FakeVectorIndex(),
+            projectService = ProjectService(ProjectRepository(state), documentRepository),
+        )
+        val active = service.sync(
+            RepositorySyncRequest(
+                repository = "active-name",
+                repositoryRoot = "/shared-root",
+                files = listOf(
+                    RepositorySyncFile(
+                        path = ".ragekhab/repository-map.md",
+                        module = "root",
+                        language = "markdown",
+                        lastModifiedAt = Instant.parse("2026-07-20T12:00:00Z"),
+                        sizeBytes = 10,
+                        contentHash = "active-hash",
+                        content = "# Active",
+                    ),
+                ),
+            ),
+        )
+        val deletedAlias = catalog.upsert("old-name", "/shared-root", "markdown", Instant.parse("2026-07-20T12:00:00Z"))
+        catalog.markDeleted(deletedAlias.id)
+
+        val status = service.status()
+
+        assertEquals(1, status.files.size)
+        assertEquals(active.repositoryId, status.repositories.single().repositoryId)
+        assertEquals(1, documentRepository.list().size)
+        assertEquals(null, catalog.get(deletedAlias.id))
+    }
+
     private fun repositoryAgentService(
         state: com.ragekhab.storage.AppStateStore,
         metadataStore: RepositoryMetadataStore,

@@ -27,6 +27,9 @@ class RepositoryCatalogStore(
             .filter { it.status != "deleted" }
             .sortedBy { it.name.lowercase() }
 
+    fun listDeleted(): List<com.ragekhab.repository.Repository> =
+        repositories().filter { it.status == "deleted" }
+
     fun hasAny(): Boolean = repositories().isNotEmpty()
 
     fun get(id: UUID): com.ragekhab.repository.Repository? = state.get(REPOSITORIES_STORE, id, com.ragekhab.repository.Repository::class.java)

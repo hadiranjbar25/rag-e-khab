@@ -41,12 +41,28 @@ class RepositoryMetadataStore(
             .sortedWith(compareBy<RepositoryFileMetadata> { it.repositoryRoot }.thenBy { it.filePath })
     }
 
+    fun listRepository(repository: String, repositoryRoot: String): List<RepositoryFileMetadata> {
+        val normalizedName = repository.trim()
+        val normalizedRoot = repositoryRoot.trim()
+        return all()
+            .filter {
+                (normalizedRoot.isNotBlank() && it.repositoryRoot == normalizedRoot) ||
+                    (normalizedRoot.isBlank() && normalizedName.isNotBlank() && it.repository.equals(normalizedName, ignoreCase = true))
+            }
+            .sortedWith(compareBy<RepositoryFileMetadata> { it.repositoryRoot }.thenBy { it.filePath })
+    }
+
     fun deleteRepository(repository: String): Int {
         val normalized = repository.trim()
         if (normalized.isBlank()) return 0
         val ids = all()
             .filter { it.repository.equals(normalized, ignoreCase = true) }
             .map { it.documentId }
+        return state.deleteAll(STORE, ids)
+    }
+
+    fun deleteRepository(repository: String, repositoryRoot: String): Int {
+        val ids = listRepository(repository, repositoryRoot).map { it.documentId }
         return state.deleteAll(STORE, ids)
     }
 

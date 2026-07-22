@@ -190,6 +190,7 @@ class RepositoryAgentService(
     }
 
     fun status(repository: String? = null): RepositoryAgentStatus {
+        purgeDeletedRepositories()
         val requestedRepository = repository?.trim()?.takeIf { it.isNotBlank() }
         val documentIds = documentRepository.ids()
         metadataStore.deleteUnavailable(documentIds)
@@ -252,11 +253,7 @@ class RepositoryAgentService(
         backfillRepositoryCatalog(metadataStore.list())
         val repository = repositoryCatalog.get(repositoryId) ?: legacyRepository(repositoryId)
             ?: error("Repository not found.")
-        val metadata = metadataStore.listRepository(repository.name)
-        val documentIds = metadata.map { it.documentId }
-        vectorIndex.deleteDocuments(documentIds)
-        documentRepository.deleteAll(documentIds)
-        val deletedIndexedKnowledge = metadataStore.deleteRepository(repository.name)
+        val deletedIndexedKnowledge = deleteRepositoryKnowledge(repository)
         repositoryCatalog.deleteRepository(repositoryId)
         return RepositoryDeleteResult(
             deleted = true,
@@ -264,6 +261,24 @@ class RepositoryAgentService(
             repositoryName = repository.name,
             deletedIndexedKnowledge = deletedIndexedKnowledge,
         )
+    }
+
+    private fun purgeDeletedRepositories() {
+        val activeRoots = repositoryCatalog.list().map { it.path }.filter { it.isNotBlank() }.toSet()
+        repositoryCatalog.listDeleted().forEach { repository ->
+            if (repository.path !in activeRoots) {
+                deleteRepositoryKnowledge(repository)
+            }
+            repositoryCatalog.deleteRepository(repository.id)
+        }
+    }
+
+    private fun deleteRepositoryKnowledge(repository: Repository): Int {
+        val metadata = metadataStore.listRepository(repository.name, repository.path)
+        val documentIds = metadata.map { it.documentId }
+        vectorIndex.deleteDocuments(documentIds)
+        documentRepository.deleteAll(documentIds)
+        return metadataStore.deleteRepository(repository.name, repository.path)
     }
 
     @Scheduled(fixedDelayString = "\${ragekhab.repository-agent.interval-ms:300000}")
