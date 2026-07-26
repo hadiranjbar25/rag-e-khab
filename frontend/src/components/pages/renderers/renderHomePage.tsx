@@ -39,7 +39,7 @@ export function renderHomePage(app: RageKhabAppModel) {
               <Stack gap="md">
                 <Group justify="space-between" align="flex-start">
                   <Stack gap={4}>
-                    <Text size="xs" fw={700} tt="uppercase" c="teal">Workspace health</Text>
+                    <Text size="xs" fw={700} tt="uppercase" c="emerald">Workspace health</Text>
                     <Title order={2} size="h3">{workspaceHealthTitle}</Title>
                     <Text c="dimmed">{activeWorkspaceHealth?.summary ?? `${projectRepositories.length} repositories, ${memories.length} memories, ${totalChunks} source units available in this workspace.`}</Text>
                   </Stack>
@@ -52,7 +52,7 @@ export function renderHomePage(app: RageKhabAppModel) {
                   <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
                     {activeWorkspaceHealth.checks.map((check) => (
                       <Paper component={Stack} gap={4} key={check.name} p="sm" radius="sm" withBorder>
-                        <Badge color={check.status === 'ready' ? 'green' : check.status === 'review' ? 'yellow' : 'gray'} variant="light">{check.status}</Badge>
+                        <Badge color={check.status === 'ready' ? 'emerald' : check.status === 'review' ? 'yellow' : 'gray'} variant="light">{check.status}</Badge>
                         <Text fw={700}>{check.name}</Text>
                         <Text size="xs" c="dimmed">{check.detail}</Text>
                       </Paper>
@@ -67,7 +67,7 @@ export function renderHomePage(app: RageKhabAppModel) {
                 const Icon = item.icon;
                 return (
                 <Paper component={Stack} gap={6} key={item.label} p="md" radius="sm" withBorder>
-                  <ThemeIcon variant="light" color={item.tone === 'green' ? 'green' : item.tone === 'purple' ? 'violet' : 'teal'} size={32} radius="sm"><Icon size={18} /></ThemeIcon>
+                  <ThemeIcon variant="light" color={item.tone === 'emerald' ? 'emerald' : item.tone === 'purple' ? 'violet' : 'emerald'} size={32} radius="sm"><Icon size={18} /></ThemeIcon>
                   <Text size="sm" c="dimmed">{item.label}</Text>
                   <Text fw={700} size="xl">{item.value}</Text>
                   <Text size="xs" c="dimmed">{item.detail}</Text>
@@ -80,7 +80,7 @@ export function renderHomePage(app: RageKhabAppModel) {
               <Paper component="section" p="md" radius="sm" withBorder>
                   <Group justify="space-between" align="center" mb="md">
                   <Title order={2} size="h4">System health</Title>
-                  <Badge color="green" variant="light" leftSection={<CheckCircle2 size={14} />}>operational</Badge>
+                  <Badge color="emerald" variant="light" leftSection={<CheckCircle2 size={14} />}>operational</Badge>
                 </Group>
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                   <Box>
@@ -104,7 +104,7 @@ export function renderHomePage(app: RageKhabAppModel) {
                     const Icon = item.icon;
                     return (
                     <Paper component={Group} key={item.id} p="sm" radius="sm" withBorder gap="sm" wrap="nowrap">
-                      <ThemeIcon variant="light" color={item.tone === 'green' ? 'green' : item.tone === 'purple' ? 'violet' : item.tone === 'red' ? 'red' : 'teal'} size={32} radius="sm"><Icon size={16} /></ThemeIcon>
+                      <ThemeIcon variant="light" color={item.tone === 'emerald' ? 'emerald' : item.tone === 'purple' ? 'violet' : item.tone === 'red' ? 'red' : 'emerald'} size={32} radius="sm"><Icon size={16} /></ThemeIcon>
                       <Box flex={1} miw={0}>
                         <Text fw={700}>{item.title}</Text>
                         <Text size="sm" c="dimmed">{item.detail}</Text>

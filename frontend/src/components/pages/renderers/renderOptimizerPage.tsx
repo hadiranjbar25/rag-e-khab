@@ -37,7 +37,7 @@ export function renderOptimizerPage(app: RageKhabAppModel) {
             <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
               <Group justify="space-between" align="flex-start">
                 <Stack gap={4}>
-                  <Text size="xs" fw={700} tt="uppercase" c="teal">MCP tool: optimize_context</Text>
+                  <Text size="xs" fw={700} tt="uppercase" c="emerald">MCP tool: optimize_context</Text>
                   <Title order={2} size="h4">Task in, smallest useful context out.</Title>
                 </Stack>
                 <Sparkles size={18} />
@@ -141,7 +141,7 @@ export function renderOptimizerPage(app: RageKhabAppModel) {
                     <Stack gap="sm">
                       <Group justify="space-between" align="center">
                         <Title order={3} size="h5">Context preview</Title>
-                        <Badge color="teal" variant="light">{optimizedContext.preview?.length} selected</Badge>
+                        <Badge color="emerald" variant="light">{optimizedContext.preview?.length} selected</Badge>
                       </Group>
                       <Stack gap="xs">
                         {optimizedContext.preview?.map((item) => (
@@ -152,7 +152,7 @@ export function renderOptimizerPage(app: RageKhabAppModel) {
                                 <Text size="sm" c="dimmed">{item.reason}</Text>
                               </Stack>
                               <Group gap="xs">
-                                {item.compressed && <Badge color="teal" variant="light">Compressed</Badge>}
+                                {item.compressed && <Badge color="emerald" variant="light">Compressed</Badge>}
                                 {item.artifactKind && <Badge color="gray" variant="outline">{item.artifactKind.toLowerCase().replaceAll('_', ' ')}</Badge>}
                               </Group>
                             </Group>

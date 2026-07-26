@@ -177,6 +177,9 @@ export function useRageKhabAppModel() {
   const [selectedRepositoryFile, setSelectedRepositoryFile] = useState<RepositoryFileMetadata | null>(null);
   const [repositoryFileDetail, setRepositoryFileDetail] = useState<DocumentDetail | null>(null);
   const [repositoryFileLoading, setRepositoryFileLoading] = useState(false);
+  const [selectedIndexedDocument, setSelectedIndexedDocument] = useState<DocumentItem | null>(null);
+  const [indexedDocumentDetail, setIndexedDocumentDetail] = useState<DocumentDetail | null>(null);
+  const [indexedDocumentLoading, setIndexedDocumentLoading] = useState(false);
   const [deleteRepositoryKnowledge, setDeleteRepositoryKnowledge] = useState(false);
   const [memoryFilter, setMemoryFilter] = useState<string>('all');
   const [memorySearch, setMemorySearch] = useState('');
@@ -211,7 +214,7 @@ export function useRageKhabAppModel() {
 
   const showToast = (toast: { type: 'success' | 'error'; title: string; message?: string }) => {
     notifications.show({
-      color: toast.type === 'success' ? 'teal' : 'red',
+      color: toast.type === 'success' ? 'emerald' : 'red',
       title: toast.title,
       message: toast.message,
       icon: toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />,
@@ -247,6 +250,32 @@ export function useRageKhabAppModel() {
 
   const copyRepositoryFileContent = async () => {
     const content = repositoryFileDetail?.chunks.map((chunk) => chunk.text).join('\n\n') ?? '';
+    if (!content) return;
+    await navigator.clipboard.writeText(content);
+    showToast({ type: 'success', title: 'Indexed content copied' });
+  };
+
+  const openIndexedDocument = async (document: DocumentItem) => {
+    setSelectedIndexedDocument(document);
+    setIndexedDocumentDetail(null);
+    setIndexedDocumentLoading(true);
+    try {
+      setIndexedDocumentDetail(await request<DocumentDetail>(`/api/documents/${document.id}`));
+    } catch (err) {
+      reportError(err, 'Could not load indexed item');
+      setSelectedIndexedDocument(null);
+    } finally {
+      setIndexedDocumentLoading(false);
+    }
+  };
+
+  const closeIndexedDocument = () => {
+    setSelectedIndexedDocument(null);
+    setIndexedDocumentDetail(null);
+  };
+
+  const copyIndexedDocumentContent = async () => {
+    const content = indexedDocumentDetail?.chunks.map((chunk) => chunk.text).join('\n\n') ?? '';
     if (!content) return;
     await navigator.clipboard.writeText(content);
     showToast({ type: 'success', title: 'Indexed content copied' });
@@ -402,7 +431,7 @@ export function useRageKhabAppModel() {
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [debugSessions]);
   const activeDebugSession = sortedDebugSessions.find((session) => session.id === activeDebugSessionId);
   const activeWorkspaceHealth = workspaceHealth?.projectId === selectedProjectId ? workspaceHealth : null;
-  const workspaceHealthColor = activeWorkspaceHealth?.status === 'ready' ? 'green' : activeWorkspaceHealth?.status === 'review' ? 'yellow' : 'gray';
+  const workspaceHealthColor = activeWorkspaceHealth?.status === 'ready' ? 'emerald' : activeWorkspaceHealth?.status === 'review' ? 'yellow' : 'gray';
   const workspaceHealthTitle = !activeWorkspaceHealth
     ? 'Workspace health'
     : activeWorkspaceHealth.status === 'ready'
@@ -415,7 +444,7 @@ export function useRageKhabAppModel() {
   const stats = useMemo(() => [
     { label: 'Repositories', value: projectRepositories.length, detail: 'linked to this workspace', icon: Network, tone: 'purple' },
     { label: 'Memories', value: memories.length, detail: `${new Set(memories.map((memory) => memory.type)).size} memory types`, icon: Brain, tone: 'purple' },
-    { label: 'System', value: status?.index.vectorStore === 'qdrant' ? 'Healthy' : 'Local', detail: `${documents.length} workspace source(s)`, icon: CheckCircle2, tone: 'green' },
+    { label: 'System', value: status?.index.vectorStore === 'qdrant' ? 'Healthy' : 'Local', detail: `${documents.length} workspace source(s)`, icon: CheckCircle2, tone: 'emerald' },
     { label: 'Token savings', value: tokenSavings ? tokenSavings.toLocaleString() : 'Ready', detail: optimizedContext ? 'latest optimization' : `${settingsDraft?.optimizer.maxTokens ?? 3000} token target`, icon: Zap, tone: 'amber' }
   ], [documents.length, memories, optimizedContext, projectRepositories.length, settingsDraft?.optimizer.maxTokens, status?.index.vectorStore, tokenSavings]);
 
@@ -519,7 +548,7 @@ export function useRageKhabAppModel() {
         title: activityTitle(activity.action),
         detail: activity.detail,
         at: activity.createdAt,
-        tone: activity.status === 'failure' ? 'red' : 'teal'
+        tone: activity.status === 'failure' ? 'red' : 'emerald'
       })),
       ...documents.slice(0, 4).map((doc) => ({
         id: `doc-${doc.id}`,
@@ -543,7 +572,7 @@ export function useRageKhabAppModel() {
         title: `${repo.repository} synchronized`,
         detail: `${repo.trackedFiles} tracked files`,
         at: repo.lastIndexedAt ?? '',
-        tone: 'green'
+        tone: 'emerald'
       }))
     ];
     return activities
@@ -1235,6 +1264,12 @@ export function useRageKhabAppModel() {
     openRepositoryFile,
     closeRepositoryFile,
     copyRepositoryFileContent,
+    selectedIndexedDocument,
+    indexedDocumentDetail,
+    indexedDocumentLoading,
+    openIndexedDocument,
+    closeIndexedDocument,
+    copyIndexedDocumentContent,
     deleteRepositoryKnowledge,
     setDeleteRepositoryKnowledge,
     memoryFilter,

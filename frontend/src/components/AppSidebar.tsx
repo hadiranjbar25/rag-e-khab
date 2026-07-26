@@ -54,7 +54,7 @@ export function AppSidebar({
     <AppShell.Navbar p="lg">
       <Stack gap="lg" h="100%">
         <Group gap="sm" wrap="nowrap">
-          <ThemeIcon size={42} radius="sm" color="teal">
+          <ThemeIcon size={42} radius="sm" color="emerald">
             <Image src="/favicon.svg" alt="" w={24} h={24} />
           </ThemeIcon>
           <Box flex={1}>
@@ -63,7 +63,7 @@ export function AppSidebar({
           </Box>
           <ActionIcon
             variant="subtle"
-            color="teal"
+            color="emerald"
             aria-label={colorScheme === 'dark' ? 'Use light theme' : 'Use dark theme'}
             onClick={() => setColorScheme(colorScheme === 'dark' ? 'light' : 'dark')}
           >
@@ -77,16 +77,16 @@ export function AppSidebar({
           p="sm"
           radius="sm"
           withBorder
-          bg={colorScheme === 'dark' ? 'teal.9' : 'teal.0'}
-          c={colorScheme === 'dark' ? 'white' : 'teal.9'}
-          style={{ borderColor: colorScheme === 'dark' ? 'var(--mantine-color-teal-5)' : 'var(--mantine-color-teal-3)' }}
+          bg={colorScheme === 'dark' ? 'emerald.9' : 'emerald.0'}
+          c={colorScheme === 'dark' ? 'white' : 'emerald.9'}
+          style={{ borderColor: colorScheme === 'dark' ? 'var(--mantine-color-emerald-5)' : 'var(--mantine-color-emerald-3)' }}
         >
           <Group gap="xs" wrap="nowrap">
-            <ThemeIcon color="teal" variant={colorScheme === 'dark' ? 'filled' : 'light'} size="sm" radius="sm">
+            <ThemeIcon color="emerald" variant={colorScheme === 'dark' ? 'filled' : 'light'} size="sm" radius="sm">
               <Layers size={14} />
             </ThemeIcon>
             <Box flex={1} miw={0}>
-              <Text size="xs" fw={700} tt="uppercase" c={colorScheme === 'dark' ? 'teal.1' : 'teal.8'}>Active workspace</Text>
+              <Text size="xs" fw={700} tt="uppercase" c={colorScheme === 'dark' ? 'emerald.1' : 'emerald.8'}>Active workspace</Text>
               <Text fw={700} truncate>{selectedProject?.name ?? 'General'}</Text>
             </Box>
           </Group>
@@ -103,9 +103,9 @@ export function AppSidebar({
         </Paper>
 
         <Badge
-          color={status?.index.vectorStore === 'qdrant' ? 'teal' : 'gray'}
+          color={status?.index.vectorStore === 'qdrant' ? 'emerald' : 'gray'}
           variant="light"
-          leftSection={<Box w={8} h={8} bg={status?.index.vectorStore === 'qdrant' ? 'green.6' : 'yellow.6'} style={{ borderRadius: 999 }} />}
+          leftSection={<Box w={8} h={8} bg={status?.index.vectorStore === 'qdrant' ? 'emerald.6' : 'yellow.6'} style={{ borderRadius: 999 }} />}
         >
           {status?.index.vectorStore ?? 'starting'}
         </Badge>

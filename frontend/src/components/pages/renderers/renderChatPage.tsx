@@ -42,7 +42,7 @@ export function renderChatPage(app: RageKhabAppModel) {
               <Stack gap="md">
                 {history.map((turn) => (
                   <Paper component={Stack} gap="md" key={turn.id} p="md" radius="sm" withBorder>
-                    <Paper p="sm" radius="sm" bg="teal.6" c="white" maw="80%" ml="auto">
+                    <Paper p="sm" radius="sm" bg="emerald.6" c="white" maw="80%" ml="auto">
                       <Text>{turn.question}</Text>
                     </Paper>
                     <Stack gap="sm">

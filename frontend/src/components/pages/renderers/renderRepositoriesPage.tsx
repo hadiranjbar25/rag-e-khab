@@ -87,7 +87,7 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                         </Text>
                       </Stack>
                       <Group gap="xs" wrap="nowrap">
-                        <Badge color={repo.status === 'synced' ? 'green' : 'gray'} variant="light" size="sm">{repo.status}</Badge>
+                        <Badge color={repo.status === 'synced' ? 'emerald' : 'gray'} variant="light" size="sm">{repo.status}</Badge>
                         <Menu shadow="md" width={210} position="bottom-end">
                           <Menu.Target>
                             <ActionIcon size="sm" variant="light" color="gray" aria-label="Repository actions">
@@ -100,7 +100,7 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                                 Remove from workspace
                               </Menu.Item>
                             ) : (
-                              <Menu.Item color="teal" leftSection={<FolderPlus size={16} />} onClick={() => linkRepositoryToProject(repo.id)} disabled={busy}>
+                              <Menu.Item color="emerald" leftSection={<FolderPlus size={16} />} onClick={() => linkRepositoryToProject(repo.id)} disabled={busy}>
                                 Link to workspace
                               </Menu.Item>
                             )}
@@ -168,7 +168,7 @@ export function renderRepositoriesPage(app: RageKhabAppModel) {
                   <Text size="sm" c="dimmed" truncate>File metadata used to decide what changed between repository syncs.</Text>
                 </Box>
                 <Group gap="xs">
-                  <Badge color="teal" variant="light">{repositoryStatus?.trackedFiles ?? 0} tracked</Badge>
+                  <Badge color="emerald" variant="light">{repositoryStatus?.trackedFiles ?? 0} tracked</Badge>
                   <Button
                     size="xs"
                     variant="subtle"

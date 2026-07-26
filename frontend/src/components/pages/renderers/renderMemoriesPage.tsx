@@ -92,7 +92,7 @@ export function renderMemoriesPage(app: RageKhabAppModel) {
                 <Stack gap={4}>
                   <Title order={2} size="h3">Remember for this workspace</Title>
                   <Text c="dimmed">Store rules like coding conventions, architecture decisions, and workspace-specific preferences.</Text>
-                  <Badge color="teal" variant="light">Scope: {selectedProject?.name ?? 'selected workspace'}</Badge>
+                  <Badge color="emerald" variant="light">Scope: {selectedProject?.name ?? 'selected workspace'}</Badge>
                 </Stack>
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                   <Select
@@ -129,7 +129,7 @@ export function renderMemoriesPage(app: RageKhabAppModel) {
                       label: `${memoryLabels[memory.type] ?? memory.type}: ${memory.content.slice(0, 70)}`,
                     }))}
                 />
-                <Button variant="light" color="teal" onClick={linkMemoryToProject} disabled={busy || !memoryToLink}>Link</Button>
+                <Button variant="light" color="emerald" onClick={linkMemoryToProject} disabled={busy || !memoryToLink}>Link</Button>
               </Group>
             </Paper>
 
@@ -164,7 +164,7 @@ export function renderMemoriesPage(app: RageKhabAppModel) {
                     {canExpand && (
                       <Button
                         variant="subtle"
-                        color="teal"
+                        color="emerald"
                         size="compact-sm"
                         onClick={() => toggleMemoryExpanded(memory.id)}
                         style={{ alignSelf: 'flex-start' }}

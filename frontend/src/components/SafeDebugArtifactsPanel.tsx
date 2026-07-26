@@ -109,7 +109,7 @@ export function SafeDebugArtifactsPanel({
               </Stack>
               <Group gap="xs">
                 {artifact.publishable === false && <Badge color="red" variant="light">Review required</Badge>}
-                {artifact.reductionPercent !== undefined && <Badge color="teal" variant="light">{artifact.reductionPercent}% smaller</Badge>}
+                {artifact.reductionPercent !== undefined && <Badge color="emerald" variant="light">{artifact.reductionPercent}% smaller</Badge>}
                 <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(artifactTextFor(artifact), artifact.id)} title="Copy compact artifact">
                   <Copy size={17} />
                 </ActionIcon>
@@ -118,7 +118,7 @@ export function SafeDebugArtifactsPanel({
             {artifact.summary && (
               <Group gap="xs">
                 <Badge color="gray" variant="light">{artifact.summary.kept} kept</Badge>
-                <Badge color="teal" variant="light">{artifact.summary.tokenized} tokenized</Badge>
+                <Badge color="emerald" variant="light">{artifact.summary.tokenized} tokenized</Badge>
                 <Badge color="red" variant="light">{artifact.summary.removed} removed</Badge>
                 <Badge color="yellow" variant="light">{artifact.summary.warnings} warnings</Badge>
               </Group>
@@ -128,7 +128,7 @@ export function SafeDebugArtifactsPanel({
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed">Effective rules</Text>
                 <Group gap="xs">
                   {artifact.audit?.slice(0, 4).map((entry) => (
-                    <Badge key={`${artifact.id}-${entry.field}-${entry.matchedRule}`} color={entry.action === 'keep' ? 'gray' : entry.action === 'tokenize' ? 'teal' : 'red'} variant="light">
+                    <Badge key={`${artifact.id}-${entry.field}-${entry.matchedRule}`} color={entry.action === 'keep' ? 'gray' : entry.action === 'tokenize' ? 'emerald' : 'red'} variant="light">
                       {entry.field}: {entry.action} · {entry.source}
                     </Badge>
                   ))}
@@ -168,7 +168,7 @@ export function SafeDebugArtifactsPanel({
               <Text fw={700}>Compare sanitized artifacts</Text>
               <Text size="xs" c="dimmed">Compare sanitized full artifacts to spot changed rows, errors, and log lines.</Text>
             </Stack>
-            <Badge color="teal" variant="light">{artifactComparison?.totalChangedLines ?? 0} changes</Badge>
+            <Badge color="emerald" variant="light">{artifactComparison?.totalChangedLines ?? 0} changes</Badge>
           </Group>
           <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
             <Select
@@ -192,7 +192,7 @@ export function SafeDebugArtifactsPanel({
           </SimpleGrid>
           <Button
             variant="light"
-            color="teal"
+            color="emerald"
             onClick={compareArtifacts}
             disabled={busy || !compareLeftId || !compareRightId || compareLeftId === compareRightId}
           >
@@ -200,11 +200,11 @@ export function SafeDebugArtifactsPanel({
           </Button>
           {artifactComparison && (
             <Stack gap="sm">
-              <Alert color={artifactComparison.totalChangedLines > 0 ? 'yellow' : 'green'} variant="light">
+              <Alert color={artifactComparison.totalChangedLines > 0 ? 'yellow' : 'emerald'} variant="light">
                 {artifactComparison.summary} {artifactComparison.unchangedLineCount} sanitized line(s) unchanged.
               </Alert>
               <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                <DiffLines title="Added" color="green" marker="+" lines={artifactComparison.addedLines} emptyText="No added sanitized lines." preWrapStyle={preWrapStyle} />
+                <DiffLines title="Added" color="emerald" marker="+" lines={artifactComparison.addedLines} emptyText="No added sanitized lines." preWrapStyle={preWrapStyle} />
                 <DiffLines title="Removed" color="red" marker="-" lines={artifactComparison.removedLines} emptyText="No removed sanitized lines." preWrapStyle={preWrapStyle} />
               </SimpleGrid>
             </Stack>
@@ -224,7 +224,7 @@ function DiffLines({
   preWrapStyle,
 }: {
   title: string;
-  color: 'green' | 'red';
+  color: 'emerald' | 'red';
   marker: '+' | '-';
   lines: DebugArtifactDiffLine[];
   emptyText: string;

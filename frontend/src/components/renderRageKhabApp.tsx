@@ -35,7 +35,7 @@ export function renderRageKhabApp(app: RageKhabAppModel) {
       <AppShell.Main>
         <Stack gap="lg">
           {showPageHeader && <PageHeader title={app.pageTitles[app.view]} description={app.pageCopy[app.view]} />}
-          {app.busy && <Progress value={38} animated color="teal" aria-label="Working" />}
+          {app.busy && <Progress value={38} animated color="emerald" aria-label="Working" />}
           {app.error && <Alert color="red" icon={<AlertCircle size={18} />}>{app.error}</Alert>}
           <ActivePage app={app} />
         </Stack>

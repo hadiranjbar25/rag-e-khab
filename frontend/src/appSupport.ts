@@ -515,7 +515,7 @@ export const memoryBadgeColor = (type: string) => {
   if (type === 'BugFix') return 'red';
   if (type === 'CodingConvention') return 'blue';
   if (type === 'TechnicalDebt') return 'yellow';
-  return 'teal';
+  return 'emerald';
 };
 
 export const formatBytes = (bytes: number) => {

@@ -50,7 +50,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
               <Paper component={Stack} gap="md" p="md" radius="sm" withBorder>
                 <Group justify="space-between" align="center">
                   <Title order={2} size="h4">Active session</Title>
-                  <Badge color={activeDebugSession?.status === 'active' ? 'green' : 'gray'} variant="light">
+                  <Badge color={activeDebugSession?.status === 'active' ? 'emerald' : 'gray'} variant="light">
                     {activeDebugSession?.status ?? `${debugSessions.length} total`}
                   </Badge>
                 </Group>
@@ -91,7 +91,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                       <Text size="sm" c="dimmed" ff="monospace" truncate>{debugDetail.session.id}</Text>
                     </Stack>
                     <Stack gap={4} align="flex-end">
-                      <Badge color={debugDetail.session.status === 'active' ? 'green' : 'gray'} variant="light">{debugDetail.session.status}</Badge>
+                      <Badge color={debugDetail.session.status === 'active' ? 'emerald' : 'gray'} variant="light">{debugDetail.session.status}</Badge>
                       <Text size="xs" c="dimmed">Created {new Date(debugDetail.session.createdAt).toLocaleString()}</Text>
                     </Stack>
                   </Group>
@@ -164,7 +164,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                             </Stack>
                             <Group gap="sm">
                               {latestDebugArtifact?.reductionPercent !== undefined && (
-                                <Badge color="teal" variant="light">{latestDebugArtifact.reductionPercent}% smaller</Badge>
+                                <Badge color="emerald" variant="light">{latestDebugArtifact.reductionPercent}% smaller</Badge>
                               )}
                               <ActionIcon variant="light" color="gray" onClick={() => copyDebugText(latestDebugText, latestDebugArtifact?.id)} disabled={!latestDebugText} title="Copy compact output"><Clipboard size={17} /></ActionIcon>
                               <Button variant="subtle" color="gray" onClick={() => copyDebugText(latestDebugText, latestDebugArtifact?.id)} disabled={!latestDebugText}>Copy compact</Button>
@@ -196,7 +196,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                                     <Text fw={700}>{item.entity}</Text>
                                     <Text size="sm" c="dimmed">{item.relation || 'No relation'}{item.parentToken ? ` · ${item.parentToken}` : ''}</Text>
                                   </Stack>
-                                  <Badge color={item.status === 'pending' ? 'green' : 'gray'} variant="light">{item.status}</Badge>
+                                  <Badge color={item.status === 'pending' ? 'emerald' : 'gray'} variant="light">{item.status}</Badge>
                                 </Group>
                                 <Text size="sm">{item.reason}</Text>
                                 {item.requestedFields.length > 0 && <Text size="xs" c="dimmed">Fields: {item.requestedFields.join(', ')}</Text>}
@@ -208,7 +208,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                                 )}
                                 <Group gap="sm">
                                   <Button variant="subtle" color="gray" onClick={() => copyDebugText(suggestedSql)} disabled={!suggestedSql} leftSection={<Copy size={16} />}>Copy SQL</Button>
-                                  <Button variant="light" color="teal" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</Button>
+                                  <Button variant="light" color="emerald" onClick={() => updateDebugDataRequest(item.id, 'complete')} disabled={busy || item.status !== 'pending'}>Mark Completed</Button>
                                   <Button variant="light" color="red" onClick={() => updateDebugDataRequest(item.id, 'reject')} disabled={busy || item.status !== 'pending'}>Reject</Button>
                                 </Group>
                               </Paper>
@@ -301,7 +301,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                         <Stack gap={2}>
                           <Title order={2} size="h4">Promote lesson to memory</Title>
                           <Text size="sm" c="dimmed">Save only durable, sanitized conclusions. Tokens, raw IDs, PII, and SQL with real IDs are blocked.</Text>
-                          <Badge color="teal" variant="light">Scope: {selectedProject?.name ?? 'selected workspace'}</Badge>
+                          <Badge color="emerald" variant="light">Scope: {selectedProject?.name ?? 'selected workspace'}</Badge>
                         </Stack>
                         <Brain size={18} />
                       </Group>
@@ -309,7 +309,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                         <Stack gap="sm">
                           <Group justify="space-between" align="center">
                             <Text fw={700}>Suggested lessons</Text>
-                            <Badge color="teal" variant="light">{debugMemorySuggestions.length}</Badge>
+                            <Badge color="emerald" variant="light">{debugMemorySuggestions.length}</Badge>
                           </Group>
                           {debugMemorySuggestions.map((suggestion) => (
                             <Paper component={Stack} gap="xs" key={suggestion.id} p="sm" radius="sm" withBorder>
@@ -318,7 +318,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                                   <Text size="sm">{suggestion.content}</Text>
                                   <Text size="xs" c="dimmed">{memoryLabels[suggestion.type] ?? suggestion.type} · {suggestion.reason}</Text>
                                 </Stack>
-                                <Button size="xs" variant="light" color="teal" onClick={() => applyDebugMemorySuggestion(suggestion)}>Use</Button>
+                                <Button size="xs" variant="light" color="emerald" onClick={() => applyDebugMemorySuggestion(suggestion)}>Use</Button>
                               </Group>
                             </Paper>
                           ))}
@@ -384,7 +384,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                           <Title order={2} size="h4">Sanitization profiles</Title>
                           <Text size="sm" c="dimmed">Built-in profiles are secure by default. Artifact summaries show the effective profile and matched rule sources.</Text>
                         </Stack>
-                        <Badge color="teal" variant="light">{app.sanitizationProfiles.length || 3} profiles</Badge>
+                        <Badge color="emerald" variant="light">{app.sanitizationProfiles.length || 3} profiles</Badge>
                       </Group>
                       <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
                         {(app.sanitizationProfiles.length ? app.sanitizationProfiles : [
@@ -395,7 +395,7 @@ export function renderSafeDebugPage(app: RageKhabAppModel) {
                           <Paper component={Stack} gap="xs" key={profile.id} p="sm" radius="sm" withBorder>
                             <Group justify="space-between" align="flex-start">
                               <Text fw={700}>{profile.name}</Text>
-                              <Badge color={profile.name === 'Balanced' ? 'teal' : 'gray'} variant="light">{profile.scope.replace('_', ' ')}</Badge>
+                              <Badge color={profile.name === 'Balanced' ? 'emerald' : 'gray'} variant="light">{profile.scope.replace('_', ' ')}</Badge>
                             </Group>
                             <Text size="xs" c="dimmed">Unknown fields: {profile.unknownFieldBehavior}</Text>
                             <Group gap="xs">
